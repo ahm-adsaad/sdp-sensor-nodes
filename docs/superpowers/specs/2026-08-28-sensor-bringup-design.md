@@ -80,7 +80,7 @@ Libraries pinned by exact version in `platformio.ini`: `sensirion/Sensirion I2C 
 
 ## Verification
 - `pio run -e sensor_test` compiles cleanly here; flash and RAM usage recorded in the build output.
-- On hardware: scan shows both addresses; SHT41 values plausible (room temp / humidity); ENS160 status progresses `INITIAL_STARTUP`/`WARMUP` → `NORMAL` within ~3 min; `p` removes both from the bus and restores them.
+- On hardware: scan shows both addresses; SHT41 values plausible (room temp / humidity); ENS160 status progresses `INITIAL_STARTUP`/`WARMUP` → `NORMAL` within ~3 min; `p` removes the ENS160 (`0x52`/`0x53`) from the bus and restores it; the SHT41 may stay visible because the I2C pull-ups back-power it.
 
 ## Out of scope
 LoRaWAN, sleep, energy model, payload codec, task execution — all in the full-firmware design.

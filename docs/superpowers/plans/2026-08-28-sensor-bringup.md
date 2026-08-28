@@ -1043,8 +1043,8 @@ Expected: `[SUCCESS]`. Record Flash/RAM.
 Flash and monitor, then:
 1. Confirm banner, scan (`0x44` + `0x52/0x53`), both sensors `OK`, help line.
 2. Readings every 2 s; ENS160 reaches `status=NORMAL` within ~3 min.
-3. Send `p` → `Sensor rail: OFF`; lines show `rail OFF`. Send `s` → scan reports `(no devices)` (proves the load switch cut power).
-4. Send `p` → `Sensor rail: ON`, both sensors re-initialise, ENS160 goes back to `WARMUP`. Readings resume.
+3. Send `p` → `Sensor rail: OFF`; lines show `rail OFF`. Wait at least 10 s, then send `s` → the scan must no longer list `0x52`/`0x53`; `0x44` MAY still appear (the SHT41 is back-powered through the I2C pull-ups on this PCB revision — expected, not a load-switch fault).
+4. Wait at least 10 s after the rail went off, then send `p` → `Sensor rail: ON`, both sensors re-initialise, ENS160 goes back to `WARMUP`. Readings resume.
 5. Send `x` → `unknown command 'x' (try ?)`.
 
 - [ ] **Step 5: Commit**

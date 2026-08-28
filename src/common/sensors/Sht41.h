@@ -17,6 +17,13 @@ public:
     bool ok() const { return _ok; }
     uint32_t serialNumber() const { return _serial; }
 
+    // forget presence state after a rail power cycle; begin() re-binds the driver
+    void reset() { _serial = 0; _ok = false; }
+
+    Sht41() = default;
+    Sht41(const Sht41&) = delete;
+    Sht41& operator=(const Sht41&) = delete;
+
 private:
     SensirionI2cSht4x _dev;
     uint32_t _serial = 0;

@@ -10,6 +10,9 @@ bool Ens160::begin() {
     }
     if (_addr == 0) return false;
 
+    // _addr stays set from here on even if the mode-set calls below fail: the probe
+    // succeeded, so callers can still report "found but init failed" instead of
+    // "not found" (see Ens160::address()).
     if (!_dev.setOperatingMode(SFE_ENS160_RESET)) return false;
     delay(RESET_SETTLE_MS);
     if (!_dev.setOperatingMode(SFE_ENS160_STANDARD)) return false;

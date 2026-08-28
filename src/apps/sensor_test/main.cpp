@@ -33,10 +33,13 @@ static void initSensors() {
         Serial.println(F("NOT FOUND"));
     }
     Serial.print(F("ENS160: "));
-    if (sensors.ens160Ok()) {
-        Serial.print(F("OK  addr=0x")); Serial.println(sensors.ens160().address(), HEX);
-    } else {
+    if (sensors.ens160().address() == 0) {
         Serial.println(F("NOT FOUND"));
+    } else if (!sensors.ens160Ok()) {
+        Serial.print(F("FOUND at 0x")); Serial.print(sensors.ens160().address(), HEX);
+        Serial.println(F(" but init failed"));
+    } else {
+        Serial.print(F("OK  addr=0x")); Serial.println(sensors.ens160().address(), HEX);
     }
 }
 
@@ -117,7 +120,9 @@ void loop() {
     const uint32_t now = millis();
     if (now - lastReadMs >= READ_PERIOD_MS) {
         lastReadMs = now;
-        digitalWrite(board::PIN_LED, !digitalRead(board::PIN_LED));
+        static bool ledOn = false;
+        ledOn = !ledOn;
+        digitalWrite(board::PIN_LED, ledOn ? HIGH : LOW);
         if (sensors.isPowered()) {
             printReadings();
         } else {

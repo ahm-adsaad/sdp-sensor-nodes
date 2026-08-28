@@ -27,8 +27,9 @@ inline const char* ens160StatusName(Ens160Status s) {
         case Ens160Status::Warmup:         return "WARMUP";
         case Ens160Status::InitialStartup: return "STARTUP";
         case Ens160Status::Invalid:        return "INVALID";
-        default:                           return "ERROR";
+        case Ens160Status::Error:          return "ERROR";
     }
+    return "ERROR";  // unreachable: all enumerators handled above
 }
 
 inline bool ens160StatusIsValid(Ens160Status s) { return s == Ens160Status::Normal; }

@@ -23,6 +23,8 @@ pio test -e native                  # host unit tests
 
 Shared code (board pin map, sensor drivers, `SensorManager`) is in `src/common/` and is reused by every app.
 
+The sensor rail is powered on at boot. The ENS160 reports `status=WARMUP` for roughly the first 3 minutes after power-up (and `STARTUP` for up to an hour on a brand-new sensor) — this is normal; readings become `NORMAL` on their own.
+
 ## Pin map (PCB rev 1.0)
 
 | Net | MCU pin | Use |

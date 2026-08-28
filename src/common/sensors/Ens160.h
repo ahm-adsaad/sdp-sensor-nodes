@@ -20,10 +20,19 @@ public:
     // Read validity flag + eCO2/TVOC/AQI. Returns false if the sensor is absent or the
     // status register could not be read. Values are still filled in when status != Normal;
     // callers decide whether to trust them via ens160StatusIsValid(r.status).
+    // Does not wait for NEWDAT; the node firmware should call `_dev.checkDataStatus()`
+    // (or poll) before trusting a sample taken right after wake.
     bool read(Ens160Reading& r);
 
     bool ok() const { return _ok; }
     uint8_t address() const { return _addr; }
+
+    // forget presence state after a rail power cycle; begin() re-binds the driver
+    void reset() { _addr = 0; _ok = false; }
+
+    Ens160() = default;
+    Ens160(const Ens160&) = delete;
+    Ens160& operator=(const Ens160&) = delete;
 
 private:
     static constexpr uint16_t RESET_SETTLE_MS = 100;
