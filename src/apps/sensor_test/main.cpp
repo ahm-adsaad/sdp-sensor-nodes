@@ -61,6 +61,38 @@ static void printReadings() {
     Serial.println();
 }
 
+static void printHelp() {
+    Serial.println(F("commands:  p = toggle sensor rail power   s = I2C scan   ? = help"));
+}
+
+static void handleCommand(char c) {
+    switch (c) {
+        case 'p':
+            if (sensors.isPowered()) {
+                sensors.powerOff();
+                Serial.println(F("Sensor rail: OFF"));
+            } else {
+                Serial.println(F("Sensor rail: ON"));
+                sensors.powerOn();
+                initSensors();
+            }
+            break;
+        case 's':
+            runScan();
+            break;
+        case '?':
+            printHelp();
+            break;
+        case '\r':
+        case '\n':
+        case ' ':
+            break;  // ignore line endings from the terminal
+        default:
+            Serial.print(F("unknown command '")); Serial.print(c); Serial.println(F("' (try ?)"));
+            break;
+    }
+}
+
 void setup() {
     board::init();
     delay(200);  // let the serial monitor attach
@@ -73,14 +105,23 @@ void setup() {
     sensors.powerOn();
     runScan();
     initSensors();
+    printHelp();
     lastReadMs = millis();
 }
 
 void loop() {
+    while (Serial.available() > 0) {
+        handleCommand(static_cast<char>(Serial.read()));
+    }
+
     const uint32_t now = millis();
     if (now - lastReadMs >= READ_PERIOD_MS) {
         lastReadMs = now;
         digitalWrite(board::PIN_LED, !digitalRead(board::PIN_LED));
-        printReadings();
+        if (sensors.isPowered()) {
+            printReadings();
+        } else {
+            Serial.print(F("t=")); Serial.print(now / 1000.0f, 1); Serial.println(F("s | rail OFF"));
+        }
     }
 }
