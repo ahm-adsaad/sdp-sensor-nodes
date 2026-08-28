@@ -10,11 +10,13 @@ void SensorManager::powerOn() {
 void SensorManager::powerOff() {
     digitalWrite(board::PIN_MIC_ENA, LOW);
     _powered = false;
-    _sht = Sht41();   // drop stale "ok" state; begin() again after powerOn()
+    _sht = Sht41();    // drop stale "ok" state; begin() again after powerOn()
+    _ens = Ens160();
 }
 
 bool SensorManager::beginSensors() {
     if (!_powered) return false;
     const bool shtOk = _sht.begin();
-    return shtOk;
+    const bool ensOk = _ens.begin();
+    return shtOk || ensOk;
 }

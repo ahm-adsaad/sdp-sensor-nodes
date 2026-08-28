@@ -3,6 +3,7 @@
 #pragma once
 #include <Arduino.h>
 #include "sensors/Sht41.h"
+#include "sensors/Ens160.h"
 
 class SensorManager {
 public:
@@ -15,11 +16,14 @@ public:
 
     // Initialise every sensor on the rail. Returns true if at least one answered.
     bool beginSensors();
-    bool sht41Ok() const { return _sht.ok(); }
+    bool sht41Ok() const  { return _sht.ok(); }
+    bool ens160Ok() const { return _ens.ok(); }
 
-    Sht41& sht41() { return _sht; }
+    Sht41&  sht41()  { return _sht; }
+    Ens160& ens160() { return _ens; }
 
 private:
-    Sht41 _sht;
+    Sht41  _sht;
+    Ens160 _ens;
     bool _powered = false;
 };

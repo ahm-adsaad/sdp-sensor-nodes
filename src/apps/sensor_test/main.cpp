@@ -32,6 +32,12 @@ static void initSensors() {
     } else {
         Serial.println(F("NOT FOUND"));
     }
+    Serial.print(F("ENS160: "));
+    if (sensors.ens160Ok()) {
+        Serial.print(F("OK  addr=0x")); Serial.println(sensors.ens160().address(), HEX);
+    } else {
+        Serial.println(F("NOT FOUND"));
+    }
 }
 
 static void printReadings() {
@@ -39,6 +45,16 @@ static void printReadings() {
     float t = 0, h = 0;
     if (sensors.sht41().read(t, h)) {
         Serial.print(t, 2); Serial.print(F(" C ")); Serial.print(h, 1); Serial.print(F(" %RH"));
+    } else {
+        Serial.print(F("--"));
+    }
+
+    Serial.print(F(" | ENS160: "));
+    Ens160Reading r;
+    if (sensors.ens160().read(r)) {
+        Serial.print(F("eCO2=")); Serial.print(r.eco2_ppm); Serial.print(F(" ppm TVOC="));
+        Serial.print(r.tvoc_ppb); Serial.print(F(" ppb AQI=")); Serial.print(r.aqi_uba);
+        Serial.print(F(" status=")); Serial.print(ens160StatusName(r.status));
     } else {
         Serial.print(F("--"));
     }
