@@ -4,7 +4,10 @@
 #include "common/I2cScan.h"
 #include "common/SensorManager.h"
 
+static constexpr uint32_t READ_PERIOD_MS = 2000;
+
 static SensorManager sensors;
+static uint32_t lastReadMs = 0;
 
 static void blink(uint8_t times, uint16_t periodMs) {
     for (uint8_t i = 0; i < times; ++i) {
@@ -21,6 +24,27 @@ static void runScan() {
     Serial.print(F("  -> ")); Serial.print(n); Serial.println(F(" device(s)"));
 }
 
+static void initSensors() {
+    sensors.beginSensors();
+    Serial.print(F("SHT41:  "));
+    if (sensors.sht41Ok()) {
+        Serial.print(F("OK  serial=0x")); Serial.println(sensors.sht41().serialNumber(), HEX);
+    } else {
+        Serial.println(F("NOT FOUND"));
+    }
+}
+
+static void printReadings() {
+    Serial.print(F("t=")); Serial.print(millis() / 1000.0f, 1); Serial.print(F("s | SHT41: "));
+    float t = 0, h = 0;
+    if (sensors.sht41().read(t, h)) {
+        Serial.print(t, 2); Serial.print(F(" C ")); Serial.print(h, 1); Serial.print(F(" %RH"));
+    } else {
+        Serial.print(F("--"));
+    }
+    Serial.println();
+}
+
 void setup() {
     board::init();
     delay(200);  // let the serial monitor attach
@@ -32,11 +56,15 @@ void setup() {
     Serial.println(F("Sensor rail: ON"));
     sensors.powerOn();
     runScan();
+    initSensors();
+    lastReadMs = millis();
 }
 
 void loop() {
-    digitalWrite(board::PIN_LED, HIGH);
-    delay(500);
-    digitalWrite(board::PIN_LED, LOW);
-    delay(500);
+    const uint32_t now = millis();
+    if (now - lastReadMs >= READ_PERIOD_MS) {
+        lastReadMs = now;
+        digitalWrite(board::PIN_LED, !digitalRead(board::PIN_LED));
+        printReadings();
+    }
 }
