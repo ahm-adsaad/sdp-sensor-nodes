@@ -23,6 +23,9 @@ bool Ens160::begin() {
 
 bool Ens160::read(Ens160Reading& r) {
     if (!_ok || _asleep) return false;
+    // NEWDAT clear = the DATA registers hold no fresh sample yet. Seen on the bench right
+    // after wake(): they read as zeros with the validity flag still at NORMAL.
+    if (!_dev.checkDataStatus()) return false;
     const uint8_t flags = _dev.getFlags();
     r.status = ens160StatusFromFlags(flags);
     if (r.status == Ens160Status::Error) return false;
