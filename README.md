@@ -19,9 +19,11 @@ pio test -e native                  # host unit tests
 
 | env | source | purpose |
 |---|---|---|
-| `sensor_test` | `src/apps/sensor_test/` | Bring-up: powers the sensor rail, scans I2C, prints SHT41 + ENS160 readings every 2 s. Serial commands: `p` toggle rail, `s` rescan, `?` help. |
+| `sensor_test` | `src/apps/sensor_test/` | Bring-up: powers the sensor rail, scans I2C, prints SHT41 + ENS160 readings every 2 s. Serial commands: `p` toggle rail, `s` rescan, `t`/`e` sleep or wake the SHT41/ENS160, `?` help. |
 
 Shared code (board pin map, sensor drivers, `SensorManager`) is in `src/common/` and is reused by every app.
+
+`t` and `e` toggle one sensor between awake and asleep while the rail stays on. This is the per-sensor power control on PCB rev 1.0, where both sensors share the single switched rail: ENS160 deep sleep (OPMODE 0x00) drops it from about 29 mA to 10 µA, and after wake it reports `WARMUP` for about 3 minutes again. The SHT41 has no sleep command and idles below 1 µA on its own, so its toggle only gates readings.
 
 The sensor rail is powered on at boot. The ENS160 reports `status=WARMUP` for roughly the first 3 minutes after power-up (and `STARTUP` for up to an hour on a brand-new sensor) — this is normal; readings become `NORMAL` on their own.
 

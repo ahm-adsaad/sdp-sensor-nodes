@@ -11,14 +11,23 @@ public:
     // Returns true if the sensor answered. Safe to call again after a power cycle.
     bool begin();
 
-    // Single-shot high-precision measurement (~10 ms). Returns false on I2C/CRC error.
+    // Single-shot high-precision measurement (~10 ms). Returns false on I2C/CRC error
+    // or while asleep.
     bool read(float& tempC, float& rh);
+
+    // The SHT4x has no sleep command: it drops back to its idle state (well under 1 uA)
+    // by itself after every measurement, so there is nothing to switch off. sleep()/wake()
+    // only gate read(), so both sensors expose the same interface and a "sleeping" sensor
+    // never generates bus traffic. They only fail if the sensor was never found.
+    bool sleep();
+    bool wake();
+    bool asleep() const { return _asleep; }
 
     bool ok() const { return _ok; }
     uint32_t serialNumber() const { return _serial; }
 
     // forget presence state after a rail power cycle; begin() re-binds the driver
-    void reset() { _serial = 0; _ok = false; }
+    void reset() { _serial = 0; _ok = false; _asleep = false; }
 
     Sht41() = default;
     Sht41(const Sht41&) = delete;
@@ -28,4 +37,5 @@ private:
     SensirionI2cSht4x _dev;
     uint32_t _serial = 0;
     bool _ok = false;
+    bool _asleep = false;
 };

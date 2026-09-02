@@ -46,7 +46,9 @@ static void initSensors() {
 static void printReadings() {
     Serial.print(F("t=")); Serial.print(millis() / 1000.0f, 1); Serial.print(F("s | SHT41: "));
     float t = 0, h = 0;
-    if (sensors.sht41().read(t, h)) {
+    if (sensors.sht41().asleep()) {
+        Serial.print(F("asleep"));
+    } else if (sensors.sht41().read(t, h)) {
         Serial.print(t, 2); Serial.print(F(" C ")); Serial.print(h, 1); Serial.print(F(" %RH"));
     } else {
         Serial.print(F("--"));
@@ -54,7 +56,9 @@ static void printReadings() {
 
     Serial.print(F(" | ENS160: "));
     Ens160Reading r;
-    if (sensors.ens160().read(r)) {
+    if (sensors.ens160().asleep()) {
+        Serial.print(F("asleep"));
+    } else if (sensors.ens160().read(r)) {
         Serial.print(F("eCO2=")); Serial.print(r.eco2_ppm); Serial.print(F(" ppm TVOC="));
         Serial.print(r.tvoc_ppb); Serial.print(F(" ppb AQI=")); Serial.print(r.aqi_uba);
         Serial.print(F(" status=")); Serial.print(ens160StatusName(r.status));
@@ -65,7 +69,21 @@ static void printReadings() {
 }
 
 static void printHelp() {
-    Serial.println(F("commands:  p = toggle sensor rail power   s = I2C scan   ? = help"));
+    Serial.println(F("commands:  p = toggle sensor rail power   s = I2C scan"));
+    Serial.println(F("           t = SHT41 sleep/wake   e = ENS160 sleep/wake   ? = help"));
+}
+
+// Toggle one sensor between awake and asleep while the rail stays on.
+template <typename Sensor>
+static void toggleSleep(const __FlashStringHelper* name, Sensor& s) {
+    Serial.print(name); Serial.print(F(": "));
+    if (!s.ok()) {
+        Serial.println(F("not initialised"));
+    } else if (s.asleep()) {
+        Serial.println(s.wake() ? F("awake") : F("wake FAILED"));
+    } else {
+        Serial.println(s.sleep() ? F("asleep") : F("sleep FAILED"));
+    }
 }
 
 static void handleCommand(char c) {
@@ -82,6 +100,12 @@ static void handleCommand(char c) {
             break;
         case 's':
             runScan();
+            break;
+        case 't':
+            toggleSleep(F("SHT41"), sensors.sht41());
+            break;
+        case 'e':
+            toggleSleep(F("ENS160"), sensors.ens160());
             break;
         case '?':
             printHelp();
