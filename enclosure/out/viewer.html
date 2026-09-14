@@ -81,6 +81,7 @@
   .stage { position: absolute; inset: 0; }
   .stage canvas { display: block; width: 100%; height: 100%; cursor: grab; }
   .stage canvas:active { cursor: grabbing; }
+  .status[hidden] { display: none; }
   .status {
     position: absolute;
     inset: 0;
@@ -386,6 +387,7 @@
     new MutationObserver(applyEdgeColour).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
     function frameModel() {
+      scene.updateMatrixWorld(true);   // bounding boxes read world matrices, which stay stale until the first render
       const box = new THREE.Box3();
       Object.values(parts).forEach((p) => { if (p && p.visible) box.expandByObject(p); });
       if (box.isEmpty()) box.setFromObject(scene);
