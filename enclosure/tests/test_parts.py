@@ -96,3 +96,47 @@ def test_front_vents_have_no_straight_horizontal_path(body):
     for i in range(41):
         h = z0 - 4.0 + i * 0.2
         assert any(body.is_inside(Vector(x, y, h)) for y in (0.1, 1.0, 2.0, 3.0, 3.9)), h
+
+
+from lid import build_lid
+
+
+@pytest.fixture(scope="module", params=[2, 3], ids=["2panel", "3panel"])
+def lid(request):
+    return request.param, build_lid(request.param)
+
+
+def test_lid_is_one_valid_solid(lid):
+    _, part = lid
+    assert part.is_valid
+    assert len(part.solids()) == 1
+
+
+def test_lid_clears_body_board_and_supercap(lid, body):
+    _, part = lid
+    for other in (body, pcb_panel(), board_keepout(), supercap()):
+        assert overlap(part, other) < 1e-3
+
+
+def test_lid_recesses_slots_and_screw_holes_are_open(lid):
+    count, part = lid
+    top = p.BODY_Z + p.LID_T
+    for r in p.pv_recesses(count):
+        assert not part.is_inside(Vector(r.cx, r.cy, top - p.PV_RECESS_DEPTH / 2))
+        assert part.is_inside(Vector(r.cx, r.cy, top - p.PV_RECESS_DEPTH - 0.5))
+        for s in p.pv_slots(r):
+            assert not part.is_inside(Vector(s.cx, s.cy, p.BODY_Z + p.LID_T / 2))
+    for x, y in p.INSERT_XY:
+        assert not part.is_inside(Vector(x, y, p.BODY_Z + 0.5))
+
+
+def test_lid_posts_stop_just_above_the_rails(lid):
+    _, part = lid
+    for x, y in p.POST_XY:
+        assert part.is_inside(Vector(x, y, p.POST_TIP_Z + 0.5))
+        assert not part.is_inside(Vector(x, y, p.POST_TIP_Z - 0.5))
+
+
+def test_lid_rejects_more_panels_than_fit():
+    with pytest.raises(ValueError):
+        build_lid(p.max_panels() + 1)
