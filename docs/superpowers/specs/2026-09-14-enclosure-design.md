@@ -99,13 +99,15 @@ bend the wires.
 **PCB panel.** A 5 mm ledge runs under all four rails, stopping 1 mm short of
 the V-score lines so the scores carry no load. Four 1.6 mm locating pegs,
 2 mm tall with a 0.4 mm chamfer, rise from the ledge at the tooling hole
-positions. Two vertical snap hooks, one on each side wall of the pocket, catch
-the top face of the side rails. The panel presses in; pulling the hooks back
-releases it. The pegs can be switched off with one parameter if the hole
-positions prove unreliable, since the pocket walls also locate the panel.
+positions. Four posts hanging from the lid press on the side rails through
+3 mm foam pads, so closing the lid clamps the panel, and with the lid off the
+panel lifts straight out. The pegs can be switched off with one parameter if
+the hole positions prove unreliable, since the pocket walls also locate the
+panel.
 
-**Supercapacitor bay.** The pack lies flat on the floor, held by one zip tie
-through two 4 x 2 mm floor slots. The divider between the bay and the PCB
+**Supercapacitor bay.** The pack rests on two 3 mm floor rails, held by one zip
+tie that passes under it between the rails, so the floor has no holes. The
+divider between the bay and the PCB
 pocket is 20 mm tall, with a notch at its back end so the pack's leads reach
 the C9 pads. A zip-tie anchor on the divider takes the strain off those 0603
 pads.
@@ -114,7 +116,7 @@ pads.
 of 3 mm closed-cell foam tape on top of that wall seals it against the lid. A
 10 x 6 mm notch at the top of the wall above J1 passes the jumper wires and is
 closed with silicone after wiring. The front and both end walls of the bay are
-4 mm thick and carry horizontal vent slots, 1.6 mm tall on a 4 mm pitch,
+4 mm thick and carry horizontal vent slots, 1.6 mm tall on a 5 mm pitch,
 sloping downward toward the outside so rain cannot fly straight in. Two 3 mm
 drain holes sit in the bay floor at the front. Each breakout sticks with foam
 tape onto a 3 mm raised pad, so air reaches both faces. The SHT41 goes at the
@@ -122,8 +124,8 @@ left end and the ENS160 at the right end, about 60 mm apart, so the ENS160
 heater does not warm the humidity sensor.
 
 **Antenna.** A 6.5 mm D-cut hole with a 6.0 mm flat, centred 20 mm above the
-floor on the left wall beside JP1, takes the SMA bulkhead jack. A 12 mm flat
-spot-face on the outside seats the nut and washer.
+floor on the left wall beside JP1, takes the SMA bulkhead jack. The wall is
+flat there, so the nut and washer seat without a spot-face.
 
 **Fasteners and mounting.** Four square columns on the outside corners hold M3
 heat-set inserts, 4.0 mm holes 6 mm deep. A parameter switches them to 2.6 mm
@@ -133,29 +135,32 @@ bottom is otherwise flat for shelf use.
 
 ## Lid
 
-A 3.0 mm plate the size of the body, with a skirt that drops 4 mm over the
-outside of the walls as a drip edge. The front edge overhangs a further 4 mm
-to shade the sensor bay vents. Foam tape on the body's wall tops seals against
-the underside.
+A 3.0 mm plate, 138.6 x 122.0 mm, that covers the body and its corner columns.
+A skirt drops 4 mm around the columns as a drip edge, and the overhang past
+the walls shades the sensor bay vents. Foam tape on the body's wall tops seals
+against the underside.
 
-The top face has two recesses, 114.6 x 37.1 x 0.4 mm, 3 mm apart, sized for
-MP3-37 panels on thin double-sided tape. Each recess has an 8 x 1.5 mm lead
-slot at both ends because the panel's terminal position is not confirmed
-yet. Unused slots are filled with silicone. Leads run down inside to U5 with
+The top face has recesses, 114.6 x 37.1 x 0.4 mm, 3 mm apart, sized for
+MP3-37 panels on thin double-sided tape. Each recess over the electronics bay
+has an 8 x 1.5 mm lead slot at both ends, because the panel's terminal
+position is not confirmed yet. Unused slots are filled with silicone. Leads run down inside to U5 with
 about 10 cm of slack, so the open lid hangs on its wires.
 
-Four countersunk 3.4 mm holes line up with the corner columns.
+Four countersunk 3.4 mm holes line up with the corner columns. Four 6 mm
+posts hang from the underside to clamp the PCB panel's side rails.
 
-A third panel does not fit. It needs 121.5 mm across the lid, which is
-104.8 mm. A third panel later would mean a bolt-on panel plate.
+Because the lid spans the corner columns, three panels fit. Two lids are
+exported, one with two recesses and one with three. The third panel sits over
+the sensor bay, where a slot would let rain reach the electronics side, so its
+foil tabs are bridged to the second panel on top of the lid instead.
 
 ## Fit coupon
 
 A small print, about 20 minutes, to settle every uncertain number before the
 full case:
 
-- a 2 mm base with the panel pocket as a 3 mm-tall frame, the ledge, the four
-  pegs, and one snap hook
+- the ledge as a 2 mm ring inside a low fence the size of the pocket, with
+  the four pegs
 - one SMA D-cut test hole in a 2.4 mm tab
 - one heat-set insert column
 
@@ -192,16 +197,21 @@ its OCP kernel are published on PyPI for Python 3.13.
 
 ```
 enclosure/
-  params.py     every dimension, grouped by the input it comes from
-  parts.py      builds the body, lid and fit coupon
-  build.py      exports STL, 3MF and STEP to out/, plus drawings and a GLB
+  params.py     every dimension and derived position, no CAD imports
+  shapes.py     solid helpers and reference models of the PCB and pack
+  body.py       the body
+  lid.py        the lid, for two or three panels
+  coupon.py     the fit coupon
+  build.py      exports STL, 3MF and STEP to out/, plus a GLB assembly
+  render.py     shaded PNG views of every part
+  tests/        pytest checks for layout, validity and interference
   README.md     regenerate, print settings, assembly order
   out/          committed, so the files print without Python
   .venv/        not committed
 ```
 
 The render is a 3D viewer published as a private web page for orbit and zoom
-review, plus orthographic SVG drawings committed next to the STLs.
+review, plus shaded PNG views committed next to the STLs.
 
 ## Verification
 
