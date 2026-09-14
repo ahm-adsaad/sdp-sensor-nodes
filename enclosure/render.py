@@ -19,11 +19,12 @@ from build123d import Part, Pos  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
 
 from build import LID_LIFT, OUT, parts  # noqa: E402
-from shapes import pcb_panel, supercap  # noqa: E402
+from shapes import pcb_panel, sensor_boards, supercap  # noqa: E402
 
 LIGHT = np.array([0.45, -0.55, 0.70]) / np.linalg.norm([0.45, -0.55, 0.70])
 VIEWS = {"front": (24, -62), "back": (30, 118), "top": (88, -90), "under": (-35, -62)}
 BODY_RGB, LID_RGB, PCB_RGB, CAP_RGB = (0.90, 0.88, 0.84), (0.78, 0.83, 0.88), (0.10, 0.35, 0.70), (0.25, 0.25, 0.28)
+SENSOR_RGB = (0.12, 0.55, 0.45)
 
 
 def _triangles(part: Part) -> np.ndarray:
@@ -72,7 +73,7 @@ def main() -> None:
         "lid_2panel": [(lid, LID_RGB)],
         "lid_3panel": [(models["lid_3panel"][0], LID_RGB)],
         "fit_coupon": [(models["fit_coupon"][0], BODY_RGB)],
-        "assembly": [(body, BODY_RGB), (pcb_panel(), PCB_RGB), (supercap(), CAP_RGB),
+        "assembly": [(body, BODY_RGB), (pcb_panel(), PCB_RGB), (supercap(), CAP_RGB), (sensor_boards(), SENSOR_RGB),
                      (Pos(0, 0, LID_LIFT) * lid, LID_RGB)],
     }
     for name, items in jobs.items():

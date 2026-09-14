@@ -140,3 +140,15 @@ def test_lid_posts_stop_just_above_the_rails(lid):
 def test_lid_rejects_more_panels_than_fit():
     with pytest.raises(ValueError):
         build_lid(p.max_panels() + 1)
+
+
+from shapes import sensor_boards
+
+
+def test_sensor_boards_sit_on_their_pads_clear_of_the_body(body):
+    boards = sensor_boards()
+    assert len(boards.solids()) == 2
+    assert overlap(boards, body) < 1e-3
+    assert boards.bounding_box().min.Z == pytest.approx(p.WALL + p.SENSOR_PAD_H + p.SENSOR_FOAM_T, abs=0.01)
+    for pad in (p.SHT41_PAD, p.ENS160_PAD):
+        assert boards.is_inside(Vector(pad.cx, pad.cy, p.SENSOR_BOARD_Z + p.SENSOR_BOARD_T / 2))

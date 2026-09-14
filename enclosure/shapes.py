@@ -53,6 +53,12 @@ def supercap() -> Part:
     return slab(p.CAP, p.WALL + p.CAP_RAIL_H, p.WALL + p.CAP_RAIL_H + p.CAP_H)
 
 
+def sensor_boards() -> Part:
+    """The SHT41 and ENS160 breakouts lying on their pads on foam tape."""
+    z0, z1 = p.SENSOR_BOARD_Z, p.SENSOR_BOARD_Z + p.SENSOR_BOARD_T
+    return slab(p.SHT41_BOARD, z0, z1) + slab(p.ENS160_BOARD, z0, z1)
+
+
 def overlap(a: Part, b: Part) -> float:
     """Volume two solids share. Zero when they are apart or only touch."""
     common = a & b

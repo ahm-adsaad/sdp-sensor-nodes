@@ -15,7 +15,7 @@ from build123d import Color, Compound, Mesher, Part, Pos, Rot, export_gltf, expo
 from body import build_body  # noqa: E402
 from coupon import build_coupon  # noqa: E402
 from lid import build_lid  # noqa: E402
-from shapes import pcb_panel, supercap  # noqa: E402
+from shapes import pcb_panel, sensor_boards, supercap  # noqa: E402
 
 OUT = HERE / "out"
 LID_LIFT = 40.0   # how far the lid floats above the body in the assembly view
@@ -54,8 +54,10 @@ def _write_assembly(body: Part, lid: Part) -> Path:
     board.label, board.color = "pcb", Color(0.08, 0.32, 0.66)
     cap = supercap()
     cap.label, cap.color = "supercap", Color(0.18, 0.18, 0.20)
+    boards = sensor_boards()
+    boards.label, boards.color = "sensors", Color(0.12, 0.55, 0.45)
     path = OUT / "assembly.glb"
-    export_gltf(Compound(children=[body, lid, board, cap]), str(path), binary=True,
+    export_gltf(Compound(children=[body, lid, board, cap, boards]), str(path), binary=True,
                 linear_deflection=0.05, angular_deflection=0.3)
     return path
 

@@ -90,6 +90,8 @@ SENSOR_BAY_Y = 26.0
 SHT41 = (25.0, 17.0)    # breakout size, x by y
 ENS160 = (17.0, 18.0)
 SENSOR_PAD_H = 3.0
+SENSOR_BOARD_T = 1.6    # breakout PCB thickness
+SENSOR_FOAM_T = 1.0     # double-sided foam tape under each breakout
 VENT_SLOT_H, VENT_PITCH, VENT_Z0 = 1.6, 5.0, 8.0
 VENT_SLOT_L, VENT_SLOT_WEB, VENT_END_SLOT_L = 18.0, 6.0, 16.0
 WIRE_NOTCH_W, WIRE_NOTCH_DEPTH = 10.0, 6.0
@@ -176,6 +178,9 @@ SHT41_PAD = Rect.centred(SENSOR_BAY_INNER.x0 + 2 + (SHT41[0] - 2) / 2, SENSOR_BA
                          SHT41[0] - 2, SHT41[1] - 2)
 ENS160_PAD = Rect.centred(SENSOR_BAY_INNER.x1 - 2 - (ENS160[0] - 2) / 2, SENSOR_BAY_INNER.cy,
                           ENS160[0] - 2, ENS160[1] - 2)
+SENSOR_BOARD_Z = WALL + SENSOR_PAD_H + SENSOR_FOAM_T
+SHT41_BOARD = Rect.centred(SHT41_PAD.cx, SHT41_PAD.cy, SHT41[0], SHT41[1])
+ENS160_BOARD = Rect.centred(ENS160_PAD.cx, ENS160_PAD.cy, ENS160[0], ENS160[1])
 DRAIN_XY = ((BODY_X / 2 - 20, VENT_WALL + 4), (BODY_X / 2 + 20, VENT_WALL + 4))
 WIRE_NOTCH_RECT = Rect.centred(J1_XY[0], SENSOR_WALL.cy, WIRE_NOTCH_W, DIVIDER + 2)
 
