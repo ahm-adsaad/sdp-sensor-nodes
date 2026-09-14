@@ -1,7 +1,7 @@
 # Sensor node enclosure — design
 
 Date: 2026-09-14
-Status: draft, waiting for review before any geometry is modelled
+Status: approved 2026-09-14, modelled in enclosure/
 
 ## Goal
 
