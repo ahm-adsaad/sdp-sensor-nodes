@@ -35,3 +35,64 @@ def test_coupon_has_pegs_and_open_test_holes(coupon):
 def test_coupon_fits_a_small_bed(coupon):
     size = coupon.bounding_box().size
     assert size.X < 110 and size.Y < 90 and size.Z < 8.5
+
+
+from body import build_body
+
+
+@pytest.fixture(scope="module")
+def body():
+    return build_body()
+
+
+def test_body_is_one_valid_solid(body):
+    assert body.is_valid
+    assert len(body.solids()) == 1
+
+
+def test_body_overall_size(body):
+    bb = body.bounding_box()
+    assert bb.min.X == pytest.approx(-p.EAR_OUT, abs=0.01)
+    assert bb.max.X == pytest.approx(p.BODY_X + p.EAR_OUT, abs=0.01)
+    assert bb.min.Y == pytest.approx(-p.COLUMN_OUT, abs=0.01)
+    assert bb.max.Y == pytest.approx(p.BODY_Y + p.COLUMN_OUT, abs=0.01)
+    assert bb.min.Z == pytest.approx(0.0, abs=0.01)
+    assert bb.max.Z == pytest.approx(p.BODY_Z, abs=0.01)
+
+
+def test_body_leaves_room_for_board_and_supercap(body):
+    assert overlap(body, pcb_panel()) < 1e-3
+    assert overlap(body, board_keepout()) < 1e-3
+    assert overlap(body, supercap()) < 1e-3
+
+
+def test_body_supports_are_solid(body):
+    for x, y in p.PEG_XY:
+        assert body.is_inside(Vector(x, y, p.PANEL_BOTTOM_Z + p.PEG_H / 2))
+    assert body.is_inside(Vector(p.POCKET.x0 + p.LEDGE_W / 2, p.POCKET.cy, p.PANEL_BOTTOM_Z - 1.0))
+    for rail in p.CAP_RAILS:
+        assert body.is_inside(Vector(rail.cx, rail.cy, p.WALL + p.CAP_RAIL_H / 2))
+    for pad in (p.SHT41_PAD, p.ENS160_PAD):
+        assert body.is_inside(Vector(pad.cx, pad.cy, p.WALL + p.SENSOR_PAD_H / 2))
+
+
+def test_body_openings_are_open(body):
+    assert not body.is_inside(Vector(p.WALL / 2, p.SMA_Y, p.SMA_Z))
+    for x, y in p.DRAIN_XY:
+        assert not body.is_inside(Vector(x, y, p.WALL / 2))
+    z = p.VENT_ROWS_Z[0]
+    for x in p.VENT_FRONT_X:
+        assert not body.is_inside(Vector(x, p.VENT_WALL / 2, z))
+    assert not body.is_inside(Vector(p.VENT_WALL / 2, p.VENT_END_Y, z))
+    assert not body.is_inside(Vector(p.BODY_X - p.VENT_WALL / 2, p.VENT_END_Y, z))
+    assert not body.is_inside(Vector(p.WIRE_NOTCH_RECT.cx, p.SENSOR_WALL.cy, p.BODY_Z - 1.0))
+    assert not body.is_inside(Vector(p.CAP_DIVIDER.cx, p.DIVIDER_NOTCH.cy, p.WALL + p.DIVIDER_H - 1.0))
+    for x, y in p.INSERT_XY:
+        assert not body.is_inside(Vector(x, y, p.BODY_Z - 1.0))
+
+
+def test_front_vents_have_no_straight_horizontal_path(body):
+    x, z0 = p.VENT_FRONT_X[0], p.VENT_ROWS_Z[1]
+    for i in range(41):
+        h = z0 - 4.0 + i * 0.2
+        assert any(body.is_inside(Vector(x, y, h)) for y in (0.1, 1.0, 2.0, 3.0, 3.9)), h
