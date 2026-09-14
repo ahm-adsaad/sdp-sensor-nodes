@@ -502,7 +502,7 @@ def test_reference_models_have_expected_volumes():
 
 
 def test_coupon_is_one_valid_solid(coupon):
-    assert coupon.is_valid()
+    assert coupon.is_valid
     assert len(coupon.solids()) == 1
 
 
@@ -672,7 +672,7 @@ def body():
 
 
 def test_body_is_one_valid_solid(body):
-    assert body.is_valid()
+    assert body.is_valid
     assert len(body.solids()) == 1
 
 
@@ -847,7 +847,7 @@ def lid(request):
 
 def test_lid_is_one_valid_solid(lid):
     _, part = lid
-    assert part.is_valid()
+    assert part.is_valid
     assert len(part.solids()) == 1
 
 
@@ -1054,7 +1054,7 @@ def export_all() -> list[Path]:
     models = parts()
     written: list[Path] = []
     for name, (model, flip) in models.items():
-        if not model.is_valid():
+        if not model.is_valid:
             raise RuntimeError(f"{name} is not a valid solid")
         printable = print_ready(model, flip)
         export_stl(printable, str(OUT / f"{name}.stl"), tolerance=0.01, angular_tolerance=0.2)
