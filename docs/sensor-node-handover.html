@@ -1,0 +1,282 @@
+<title>Sensor Node Handover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Semi+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #E9EDEF;
+    --sheet: #F6F8F8;
+    --ink: #17212B;
+    --graphite: #5A6873;
+    --rule: #C5CFD6;
+    --mask: #1D5BA6;
+    --mask-ink: #FFFFFF;
+    --focus: #1D5BA6;
+    --display: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+    --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0E1418;
+      --sheet: #131B21;
+      --ink: #E2E8EC;
+      --graphite: #92A1AB;
+      --rule: #26323A;
+      --mask: #6EA3E6;
+      --mask-ink: #0E1418;
+      --focus: #6EA3E6;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0E1418;
+    --sheet: #131B21;
+    --ink: #E2E8EC;
+    --graphite: #92A1AB;
+    --rule: #26323A;
+    --mask: #6EA3E6;
+    --mask-ink: #0E1418;
+    --focus: #6EA3E6;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font: 400 16px/1.55 var(--body);
+    padding-block: 28px 56px;
+    padding-inline: 20px;
+  }
+  .page { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; }
+
+  header.masthead {
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+  }
+  .eyebrow {
+    margin: 0;
+    padding: 14px 18px 0;
+    font: 600 12px/1.3 var(--display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--graphite);
+  }
+  h1 {
+    margin: 0;
+    padding: 4px 18px 14px;
+    font: 600 clamp(30px, 6vw, 40px)/1.03 var(--display);
+    letter-spacing: 0.005em;
+    text-wrap: balance;
+  }
+  .stamp {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid var(--rule);
+    margin: 0;
+  }
+  .stamp > div { padding: 9px 18px 11px; min-width: 0; }
+  .stamp > div + div { border-left: 1px solid var(--rule); }
+  .stamp dt {
+    font: 500 11.5px/1.3 var(--display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--graphite);
+  }
+  .stamp dd { margin: 2px 0 0; font: 500 15px/1.35 var(--body); }
+  @media (max-width: 520px) {
+    .stamp { grid-template-columns: 1fr 1fr; }
+    .stamp > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--rule); grid-column: span 2; }
+  }
+
+  section { display: flex; flex-direction: column; gap: 12px; }
+  h2 {
+    margin: 0;
+    font: 600 13px/1.3 var(--display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--graphite);
+  }
+  h3 {
+    margin: 0;
+    font: 600 19px/1.25 var(--display);
+    letter-spacing: 0.01em;
+  }
+  p { margin: 0; max-width: 62ch; }
+  .lede { font-size: 17.5px; }
+  .note { color: var(--graphite); font-size: 15px; }
+
+  ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 62ch; }
+  ul.plain li::marker { color: var(--mask); }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 480px; }
+  caption {
+    text-align: left;
+    padding-bottom: 8px;
+    font: 600 19px/1.25 var(--display);
+    letter-spacing: 0.01em;
+    color: var(--ink);
+  }
+  th, td { padding: 8px 0; border-bottom: 1px solid var(--rule); vertical-align: baseline; text-align: left; }
+  thead th {
+    font: 500 11.5px/1.3 var(--display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--graphite);
+    padding-top: 0;
+  }
+  tbody th { font: 400 15.5px/1.4 var(--body); font-weight: 500; padding-right: 14px; }
+  td.value {
+    font: 400 14.5px/1.4 var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    padding-right: 14px;
+  }
+  td.src { font-size: 14px; color: var(--graphite); }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+  .ref { font: 500 14px/1.4 var(--mono); color: var(--mask); }
+
+  .open {
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--mask);
+    border-radius: 2px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .open ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  .open li::marker { color: var(--mask); }
+
+  footer { border-top: 1px solid var(--rule); padding-top: 14px; color: var(--graphite); font-size: 14px; }
+  a { color: var(--mask); }
+  a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+</style>
+
+<div class="page">
+  <header class="masthead">
+    <p class="eyebrow">SDP EH IoT &middot; rev 1.0 node</p>
+    <h1>Sensor Node Handover</h1>
+    <dl class="stamp">
+      <div><dt>Units</dt><dd>mm</dd></div>
+      <div><dt>Board revision</dt><dd>1.0, fabricated</dd></div>
+      <div><dt>Issued</dt><dd>16 Sep 2026</dd></div>
+    </dl>
+  </header>
+
+  <section>
+    <h2>What this is</h2>
+    <p class="lede">A battery-free environmental sensor node for our senior design project. Solar
+      panels feed an energy-harvesting chip that charges a supercapacitor, and the node runs
+      entirely off that stored charge.</p>
+    <p>It measures temperature and humidity with an SHT41, and air quality with an ENS160,
+      then sends the readings over LoRaWAN. The main board carries an ATmega4809
+      microcontroller, an SX1276 radio module and an AEM10330 harvesting chip. The two sensors
+      sit on their own small breakout boards and connect to the main board with jumper wires.</p>
+    <p><strong>We need a 3D printed case</strong> to hold all of it together so the node can be
+      deployed. Everything below is the parts list and the measurements for that case.</p>
+  </section>
+
+  <section>
+    <h2>What the case has to hold</h2>
+    <ul class="plain">
+      <li>The main circuit board, with its breakaway rails still attached</li>
+      <li>The supercapacitor pack, wired to the board</li>
+      <li>The SHT41 and ENS160 breakout boards, which need to reach outside air</li>
+      <li>The antenna, which connects to the board through a short coaxial lead</li>
+      <li>One to three solar panels, which must face the sky</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="table-wrap">
+      <table>
+        <caption>Main circuit board, as fabricated</caption>
+        <thead>
+          <tr><th scope="col">Item</th><th scope="col">Measurement</th><th scope="col">Source</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Whole panel, rails attached</th><td class="value">72.0 &times; 71.4</td><td class="src">photo, &plusmn;0.3</td></tr>
+          <tr><th scope="row">Board inside the rails</th><td class="value">43.94 &times; 59.05</td><td class="src">design file, exact</td></tr>
+          <tr><th scope="row">Board thickness</th><td class="value">1.6</td><td class="src">standard</td></tr>
+          <tr><th scope="row">Rail width, left and right</th><td class="value">14.2 and 13.9</td><td class="src">photo, &plusmn;0.3</td></tr>
+          <tr><th scope="row">Rail width, top and bottom</th><td class="value">6.2 and 6.1</td><td class="src">photo, &plusmn;0.3</td></tr>
+          <tr><th scope="row">Tooling holes in the rails</th><td class="value">4 &times; 2.0 dia</td><td class="src">photo and tape</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">The four tooling holes are not symmetric. Measured from the panel&rsquo;s outer
+      edges: top-left 4.8 along and 3.2 in, top-right 10.5 from the right and 3.1 in,
+      bottom-left 5.3 along and 3.0 in, bottom-right 5.2 from the right and 3.3 in. Top means
+      the edge nearest the screw terminal.</p>
+  </section>
+
+  <section>
+    <div class="table-wrap">
+      <table>
+        <caption>Parts on the board that matter for fit</caption>
+        <thead>
+          <tr><th scope="col">Part</th><th scope="col">Measurement</th><th scope="col">Source</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row"><span class="ref">U5</span> screw terminal, 2 pole</th><td class="value">7.7 &times; 10.7 footprint</td><td class="src">design file</td></tr>
+          <tr><th scope="row"><span class="ref">U5</span> terminal pitch</th><td class="value">5.0</td><td class="src">design file</td></tr>
+          <tr><th scope="row"><span class="ref">U2</span> LoRa radio module</th><td class="value">16.0 &times; 18.5 footprint</td><td class="src">design file</td></tr>
+          <tr><th scope="row"><span class="ref">JP1</span> antenna socket</th><td class="value">on the board edge</td><td class="src">design file</td></tr>
+          <tr><th scope="row"><span class="ref">J1</span> sensor header</th><td class="value">2 &times; 2 pins, 2.54 pitch</td><td class="src">design file</td></tr>
+          <tr><th scope="row"><span class="ref">J2</span> spare header</th><td class="value">2 &times; 2 pins, 2.54 pitch</td><td class="src">design file</td></tr>
+          <tr><th scope="row"><span class="ref">H1</span> and <span class="ref">H3</span> headers</th><td class="value">6 pins each, 2.54 pitch</td><td class="src">design file</td></tr>
+          <tr><th scope="row"><span class="ref">H2</span> power jumper</th><td class="value">2 pins, 2.54 pitch</td><td class="src">design file</td></tr>
+          <tr><th scope="row"><span class="ref">C9</span> pads, supercapacitor wires</th><td class="value">0603, near the centre</td><td class="src">design file</td></tr>
+          <tr><th scope="row">Jumper wire plug on a header</th><td class="value">about 16.5 tall</td><td class="src">estimate, unmeasured</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="table-wrap">
+      <table>
+        <caption>Separate parts</caption>
+        <thead>
+          <tr><th scope="col">Part</th><th scope="col">Measurement</th><th scope="col">Source</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Supercapacitor pack</th><td class="value">65 &times; 38 &times; 18</td><td class="src">tape, &plusmn;1</td></tr>
+          <tr><th scope="row">SHT41 breakout board</th><td class="value">25 &times; 17</td><td class="src">tape, &plusmn;1</td></tr>
+          <tr><th scope="row">ENS160 breakout board</th><td class="value">17 &times; 18</td><td class="src">tape, &plusmn;1</td></tr>
+          <tr><th scope="row">Solar panel, PowerFilm MP3-37</th><td class="value">114.0 &times; 36.5 &times; 0.22</td><td class="src">manufacturer</td></tr>
+          <tr><th scope="row">Solar panel weight</th><td class="value">1.1 g</td><td class="src">manufacturer</td></tr>
+          <tr><th scope="row">Antenna</th><td class="value">70 long</td><td class="src">tape</td></tr>
+          <tr><th scope="row">Antenna lead to the board</th><td class="value">80 long</td><td class="src">tape</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">The solar panel gives 3.0 V and 50 mA in full sun, and its terminals are
+      strips of foil tape rather than wires. The sensor breakouts connect to the board with
+      ordinary jumper wires.</p>
+  </section>
+
+  <section class="open">
+    <h3>Still to measure</h3>
+    <ul>
+      <li>Heights of the tall parts on the board: the screw terminal and the radio module</li>
+      <li>How far the through-hole pins stick out under the board</li>
+      <li>Whether the sensor breakout boards have mounting holes, and where</li>
+      <li>Which end of the solar panel the foil terminals are on</li>
+      <li>The capacitance and voltage printed on the supercapacitor</li>
+      <li>Which 3D printer and material we are using</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>Exact figures come from the board design files. Photo figures were scaled from a
+      calibrated photograph of the fabricated board. Tape figures were measured by hand and are
+      good to about a millimetre.</p>
+  </footer>
+</div>
