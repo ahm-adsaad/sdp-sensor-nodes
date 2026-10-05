@@ -4,19 +4,26 @@ Parametric 3D-printed case for the rev 1.0 sensor node. Every dimension lives in
 `params.py`. The design reasoning is in
 `docs/superpowers/specs/2026-09-14-enclosure-design.md`.
 
+This is a prototype enclosure, pending physical fit and outdoor testing. See
+[fit review](FIT_REVIEW.md) for the assumptions to check against the actual parts.
+
 ## Files to print
 
 | File | Part | Notes |
 |---|---|---|
 | `out/fit_coupon.3mf` | fit coupon | print this first, about 20 minutes |
 | `out/body.3mf` | body | open side up |
+| `out/lid_1panel.3mf` | lid for one MP3-37 panel | exported top face down |
 | `out/lid_2panel.3mf` | lid for two MP3-37 panels | exported top face down |
 | `out/lid_3panel.3mf` | lid for three panels | exported top face down |
 
 STL and STEP copies sit next to each 3MF. Shaded views are in `out/renders/`.
 
 Print in PETG or ASA, in a light colour. PLA softens in direct sun.
-Use 0.2 mm layers, 4 perimeters and 20 to 25 percent infill. No supports.
+Use 0.2 mm layers, 4 perimeters and 20 to 25 percent infill as initial slicer
+settings. Inspect the layer preview: top-face-down lids bridge their 0.4 mm
+deep panel recesses, with a short span of 37.1 mm. Support-free lid printing
+has not been demonstrated; tune bridging or use removable support as needed.
 
 ## Check the fit coupon
 
@@ -65,5 +72,5 @@ cd enclosure
 5. Lay the supercapacitor on its rails, pass a zip tie under it and around it, and route its leads through the divider notch to C9. Tie the leads to the anchor slot.
 6. Press the PCB panel onto the pegs.
 7. Stick foam tape along the top of every wall, including the sensor wall, and a foam square on each lid post.
-8. Stick the panels into the lid recesses. Feed their leads through the slots to U5 and seal the slots. On the three-panel lid, bridge the front panel's tabs to the middle panel on top of the lid.
+8. Attach insulated leads to the panels' foil terminals using a method suitable for the actual panel. Support and strain-relieve the foil-to-wire joints on the lid; do not pull the foil through the slots. Stick the panels into the lid recesses, feed the insulated leads through the slots to U5 and seal the slots. On the three-panel lid, route the front panel's insulated leads across the top to a rear lead slot. Confirm the electrical interconnection separately before connecting U5.
 9. Screw the lid down.

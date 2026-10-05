@@ -70,6 +70,7 @@ def main() -> None:
     body, lid = models["body"][0], models["lid_2panel"][0]
     jobs = {
         "body": [(body, BODY_RGB)],
+        "lid_1panel": [(models["lid_1panel"][0], LID_RGB)],
         "lid_2panel": [(lid, LID_RGB)],
         "lid_3panel": [(models["lid_3panel"][0], LID_RGB)],
         "fit_coupon": [(models["fit_coupon"][0], BODY_RGB)],

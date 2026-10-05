@@ -33,6 +33,7 @@ def parts() -> dict[str, tuple[Part, bool]]:
     """Printable parts by file name, each with whether it prints upside down."""
     return {
         "body": (build_body(), False),
+        "lid_1panel": (build_lid(1), True),
         "lid_2panel": (build_lid(2), True),
         "lid_3panel": (build_lid(3), True),
         "fit_coupon": (build_coupon(), False),

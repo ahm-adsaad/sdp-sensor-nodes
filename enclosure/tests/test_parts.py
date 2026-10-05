@@ -101,7 +101,7 @@ def test_front_vents_have_no_straight_horizontal_path(body):
 from lid import build_lid
 
 
-@pytest.fixture(scope="module", params=[2, 3], ids=["2panel", "3panel"])
+@pytest.fixture(scope="module", params=[1, 2, 3], ids=["1panel", "2panel", "3panel"])
 def lid(request):
     return request.param, build_lid(request.param)
 

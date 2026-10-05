@@ -14,7 +14,7 @@ def test_lid_prints_top_face_down_on_the_bed():
 def test_export_writes_every_file(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "OUT", tmp_path)
     written = {path.name: path for path in build.export_all()}
-    for part in ("body", "lid_2panel", "lid_3panel", "fit_coupon"):
+    for part in ("body", "lid_1panel", "lid_2panel", "lid_3panel", "fit_coupon"):
         for suffix in (".stl", ".3mf", ".step"):
             assert written[f"{part}{suffix}"].stat().st_size > 1000
     assert written["assembly.glb"].stat().st_size > 1000
