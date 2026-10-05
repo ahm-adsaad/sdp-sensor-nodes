@@ -26,8 +26,10 @@ comparison.
 | Solar panel | PowerFilm MP3-37, 150 mW and 50 mA in full sun | PowerFilm datasheet | exact |
 | Panels per node, tilt | 1 to 3, flat on the lid | enclosure design | count not decided |
 | Storage | Eaton HS1040 150 F, 384 J between 2.80 and 3.60 V | rev-2 decision, 2026-10-03 | nominal |
-| Storage voltage to the MCU | not connected on rev-2, board already ordered | user, 2026-10-05 | exact |
-| PMIC status pins to the MCU | ST_LOAD, ST_STO_RDY, ST_STO_OVDIS | 2026-10-02 schematic | read from the export |
+| Storage thresholds | STO_CFG wired LLLH: 2.80 / 3.10 / 3.60 V | fabricated schematic 2026-10-05; voltages from the 2026-10-03 datasheet check | wiring traced |
+| Storage voltage to the MCU | not connected: the VSTO net reaches only the PMIC, screw terminal U11 and C1 | fabricated schematic 2026-10-05 | wiring traced |
+| PMIC status pins to the MCU | ST_STO_OVDIS on PB2, ST_STO_RDY on PB3, ST_LOAD on PB4 | fabricated schematic 2026-10-05 | wiring traced |
+| Free MCU pins on a header | H5 pins 1 to 5 are PD0 to PD4; pin 6 is PC7 although its net is named D27\|A5 | fabricated schematic 2026-10-05 | wiring traced |
 | PPK2 | one per node; 200 nA to 1 A, 100 ksps, source or ampere-meter mode at 0.8 to 5 V, logs through a PC app | Nordic product page, 2026-10-05 | exact |
 | VPS | ChirpStack, Node-RED, InfluxDB and Grafana running | user, 2026-10-05 | InfluxDB version unknown |
 | Node data | none yet | user, 2026-10-05 | — |
@@ -218,7 +220,7 @@ has no storage-voltage sensing:
 | Option | How | Limits |
 |---|---|---|
 | A. PPK2 on the panel line | ampere-meter mode between panel and PMIC, logged to a computer, exported as CSV | needs a computer per PPK2 or a hub; needs 0.8 V or more; blind when the store is full; current only, so panel voltage must come from elsewhere |
-| B. Divider bodge | two resistors from the storage screw terminal to a free analog pin, storage voltage sent in the uplink | needs a free analog pin (to check on the schematic) and firmware support |
+| B. External divider | two resistors across the storage screw terminal U11, midpoint to one of H5 pins 1 to 5 (PD0 to PD4), storage voltage sent in the uplink | no board change; needs firmware support; confirm in the ATmega4809 datasheet that the chosen pin is an ADC input |
 | C. Status pins only | store-ready and over-discharge flags in the uplink | too coarse to give harvest; usable as the store-full flag |
 
 The forecaster works with any of them and is tested with a simulator that
