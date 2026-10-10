@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 
 import cli
@@ -28,3 +30,18 @@ def test_fetch_history_saves_three_history_files(tmp_path, monkeypatch, site, fi
     assert cli.main(["fetch-history", "--start", "2025-06-10", "--end", "2025-06-11"]) == 0
     for name in ("previous_runs", "air_quality_history", "satellite"):
         assert (tmp_path / f"{name}.parquet").exists()
+
+
+def test_train_writes_models_and_choice(tmp_path, monkeypatch, site):
+    import model
+
+    monkeypatch.setattr(cli.config, "MODELS", tmp_path / "models")
+    monkeypatch.setattr(cli, "load_site", lambda: site)
+    monkeypatch.setattr(cli, "load_training_table", lambda site: model.synthetic_table(site, "2024-06-01", 240))
+    assert cli.main(["train"]) == 0
+    assert (tmp_path / "models" / "sky" / "q10.txt").exists()
+    assert (tmp_path / "models" / "climatology.parquet").exists()
+    offs = json.loads((tmp_path / "models" / "raw_forecast.json").read_text())
+    assert set(offs) == {"q10", "q90"}
+    choice = json.loads((tmp_path / "models" / "choice.json").read_text())
+    assert choice["model"] in ("lightgbm", "raw_forecast") and "pinball10" in choice
