@@ -30,13 +30,23 @@ def test_climatology_falls_back_to_overall_for_unseen_month():
 
 
 def test_raw_forecast_centres_on_k_fc_with_residual_band():
-    train = table("2025-06-01", 30, 0.9, 1.0)       # actual sits 0.1 above the forecast
+    train = table("2025-06-01", 30, 0.9, 0.9)       # unbiased forecast: residuals are noise around 0
+    test = table("2025-07-01", 2, 0.8, 0.8)
+    out = baselines.raw_forecast(train, test)
+    offs = baselines.residual_offsets(train)
+    assert -0.15 < offs["q10"] < 0.0 < offs["q90"] < 0.15
+    assert (out["q50"] == 0.8).all()
+    assert np.allclose(out["q10"], 0.8 + offs["q10"]) and np.allclose(out["q90"], 0.8 + offs["q90"])
+
+
+def test_raw_forecast_levels_stay_ordered_when_the_forecast_is_biased():
+    train = table("2025-06-01", 30, 0.9, 1.0)       # actual sits 0.1 above the forecast: even the 10 % residual is positive
     test = table("2025-07-01", 2, 0.8, 0.9)
     out = baselines.raw_forecast(train, test)
-    assert (out["q50"] == 0.8).all()
     offs = baselines.residual_offsets(train)
-    assert 0.0 < offs["q10"] < offs["q90"] < 0.25
-    assert np.allclose(out["q10"], 0.8 + offs["q10"]) and np.allclose(out["q90"], 0.8 + offs["q90"])
+    assert offs["q10"] > 0
+    assert (out["q10"] <= out["q50"]).all() and (out["q50"] <= out["q90"]).all()
+    assert (out["q10"] == 0.8).all()                  # after sorting, the raw forecast is the lowest level
 
 
 def test_persistence_uses_the_same_hour_yesterday():
