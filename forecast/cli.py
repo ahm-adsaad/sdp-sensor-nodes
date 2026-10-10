@@ -18,6 +18,7 @@ import feeds
 import metrics
 import model
 import node
+import ppk2
 import simulate
 import solar
 
@@ -145,6 +146,14 @@ def cmd_dryrun(args) -> int:
     return 0
 
 
+def cmd_import_ppk2(args) -> int:
+    samples = ppk2.read_csv(args.path)
+    records = ppk2.hourly_energy(samples, args.start, args.volts, args.node)
+    path = archive.save_records(args.node, records, root=config.DATA / "harvest")
+    log.info("%s: %d hours from %s -> %s", args.node, len(records), records["hour_start"].min(), path)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forecast")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -160,6 +169,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_backtest)
     p = sub.add_parser("dryrun", help="simulated node: the node ratio must follow an injected soiling drop and a cleaning")
     p.set_defaults(func=cmd_dryrun)
+    p = sub.add_parser("import-ppk2", help="turn a PPK2 CSV export (panel line, ampere-meter mode) into hourly harvest records")
+    p.add_argument("path")
+    p.add_argument("--node", required=True)
+    p.add_argument("--start", required=True, help="UTC time of the first sample, e.g. 2026-10-14T06:00:00Z")
+    p.add_argument("--volts", type=float, default=3.0, help="assumed panel-line voltage")
+    p.set_defaults(func=cmd_import_ppk2)
     return parser
 
 

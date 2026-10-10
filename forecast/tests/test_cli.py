@@ -1,4 +1,5 @@
 import json
+import pathlib
 
 import pandas as pd
 
@@ -56,3 +57,12 @@ def test_dryrun_shows_soiling_and_cleaning(tmp_path, monkeypatch, site, capsys):
     assert abs(rows["day-10"] - 0.9) < 0.02
     assert abs(rows["day-17"] - 0.6) < 0.02
     assert abs(rows["day-28"] - 0.9) < 0.02
+
+
+def test_import_ppk2_saves_records(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli.config, "DATA", tmp_path)
+    monkeypatch.delenv("INFLUX_URL", raising=False)   # local import only; no InfluxDB in tests
+    sample = pathlib.Path(__file__).parent / "fixtures" / "ppk2_sample.csv"
+    assert cli.main(["import-ppk2", "--node", "node-01", "--start", "2026-10-14T06:00:00Z", "--volts", "3.0", str(sample)]) == 0
+    recs = cli.archive.load_records("node-01", root=tmp_path / "harvest")
+    assert len(recs) == 2 and (recs["source"] == "ppk2").all()
