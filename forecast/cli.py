@@ -40,11 +40,35 @@ def cmd_fetch(args) -> int:
     return 0
 
 
+def cmd_fetch_history(args) -> int:
+    site = load_site()
+    end = args.end or (now_utc() - pd.Timedelta(days=1)).date().isoformat()
+    jobs = (
+        ("previous_runs", lambda s, e: feeds.fetch_previous_runs(site, s, e)),
+        ("air_quality_history", lambda s, e: feeds.fetch_air_quality_history(site, s, e)),
+        ("satellite", lambda s, e: feeds.fetch_satellite(site, s, e)),
+    )
+    for name, one in jobs:
+        try:
+            frame = feeds.fetch_range(one, args.start, end)
+        except feeds.FeedError as exc:
+            log.error("%s: %s", name, exc)
+            return 1
+        frame = frame.dropna(subset=frame.columns[1:], how="all")
+        path = archive.save_history(name, frame, root=config.HISTORY)
+        log.info("%s: %d hours, first %s -> %s", name, len(frame), frame["hour_start"].min(), path)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forecast")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("fetch", help="fetch the live forecast and air-quality feeds into the archive")
     p.set_defaults(func=cmd_fetch)
+    p = sub.add_parser("fetch-history", help="fetch the public training history (day-ahead runs, air quality, satellite)")
+    p.add_argument("--start", default=config.HISTORY_START)
+    p.add_argument("--end", default=None, help="ISO date, default yesterday")
+    p.set_defaults(func=cmd_fetch_history)
     return parser
 
 
