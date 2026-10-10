@@ -40,6 +40,7 @@ def test_save_and_load_round_trip(site, tmp_path):
     sky = model.train(t, max_rounds=100)
     model.save(sky, tmp_path / "sky")
     assert (tmp_path / "sky" / "q50.txt").exists()
+    assert not list((tmp_path / "sky").glob("*.tmp"))
     meta = json.loads((tmp_path / "sky" / "meta.json").read_text())
     assert meta["features"] == features.FEATURES and meta["trained_rows"] == len(t)
     back = model.load(tmp_path / "sky")

@@ -96,3 +96,17 @@ def test_read_harvest_empty():
     s = FakeSession(FakeResp(200, "\r\n"))
     r = influx.read_harvest("node-01", pd.Timestamp("2026-10-01", tz="UTC"), V2, session=s)
     assert r.empty and list(r.columns) == influx.RECORD_COLUMNS
+
+
+def test_read_harvest_v1_raises_on_query_error():
+    import json
+
+    body = json.dumps({"results": [{"error": "database not found: sdp"}]})
+    with pytest.raises(influx.InfluxError, match="database not found"):
+        influx.read_harvest("node-01", pd.Timestamp("2026-10-01", tz="UTC"), V1, session=FakeSession(FakeResp(200, body)))
+
+
+def test_read_harvest_v2_raises_when_fields_are_missing():
+    csv = ",result,table,_time,node,source,seconds\r\n,_result,0,2026-10-14T06:00:00Z,node-01,ppk2,3600\r\n"
+    with pytest.raises(influx.InfluxError, match="energy_j"):
+        influx.read_harvest("node-01", pd.Timestamp("2026-10-01", tz="UTC"), V2, session=FakeSession(FakeResp(200, csv)))

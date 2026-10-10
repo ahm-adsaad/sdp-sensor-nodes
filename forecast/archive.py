@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
 
 import pandas as pd
 
 import config
+
+
+def _write_parquet(frame: pd.DataFrame, path: pathlib.Path) -> None:
+    """Write through a temp file in the same directory so a kill mid-write never leaves a torn file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    frame.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
 
 
 def append(feed: str, frame: pd.DataFrame, issued_at: pd.Timestamp, root: pathlib.Path = config.ARCHIVE) -> pathlib.Path:
@@ -16,8 +25,7 @@ def append(feed: str, frame: pd.DataFrame, issued_at: pd.Timestamp, root: pathli
     if path.exists():
         new = pd.concat([pd.read_parquet(path), new], ignore_index=True)
     new = new.drop_duplicates(["issued_at", "hour_start"], keep="last").sort_values(["issued_at", "hour_start"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    new.to_parquet(path, index=False)
+    _write_parquet(new, path)
     return path
 
 
@@ -29,11 +37,14 @@ def load(feed: str, root: pathlib.Path = config.ARCHIVE) -> pd.DataFrame:
 
 
 def latest(feed: str, root: pathlib.Path = config.ARCHIVE):
-    all_rows = load(feed, root)
-    if all_rows.empty:
+    files = sorted((pathlib.Path(root) / feed).glob("*.parquet"))
+    if not files:
         return None
-    issued = all_rows["issued_at"].max()
-    rows = all_rows[all_rows["issued_at"] == issued].drop(columns="issued_at").reset_index(drop=True)
+    newest = pd.read_parquet(files[-1])  # issue times only grow, so the newest issue is in the newest-named file
+    if newest.empty:
+        return None
+    issued = newest["issued_at"].max()
+    rows = newest[newest["issued_at"] == issued].drop(columns="issued_at").reset_index(drop=True)
     return pd.Timestamp(issued), rows
 
 
@@ -43,8 +54,7 @@ def save_history(name: str, frame: pd.DataFrame, root: pathlib.Path = config.HIS
     if path.exists():
         new = pd.concat([pd.read_parquet(path), frame], ignore_index=True)
     new = new.drop_duplicates("hour_start", keep="last").sort_values("hour_start")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    new.to_parquet(path, index=False)
+    _write_parquet(new, path)
     return path
 
 
@@ -64,8 +74,7 @@ def save_records(node: str, records: pd.DataFrame, root: pathlib.Path = config.D
     if path.exists():
         new = pd.concat([pd.read_parquet(path), new], ignore_index=True)
     new = new.drop_duplicates("hour_start", keep="last").sort_values("hour_start")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    new.to_parquet(path, index=False)
+    _write_parquet(new, path)
     return path
 
 

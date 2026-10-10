@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import pathlib
 import sys
 
 import pandas as pd
@@ -108,10 +109,10 @@ def cmd_train(args) -> int:
     config.MODELS.mkdir(parents=True, exist_ok=True)
     sky = model.train(table)
     model.save(sky, config.MODELS / "sky")
-    table[["month", "hour", "k"]].to_parquet(config.MODELS / "climatology.parquet", index=False)
-    (config.MODELS / "raw_forecast.json").write_text(json.dumps(baselines.residual_offsets(table)), encoding="utf-8")
+    archive._write_parquet(table[["month", "hour", "k"]], config.MODELS / "climatology.parquet")
+    write_json(config.MODELS / "raw_forecast.json", baselines.residual_offsets(table))
     choice = {**choose_model(table), "trained_rows": len(table), "last_hour": sky.last_hour, "trained_at": str(now_utc())}
-    (config.MODELS / "choice.json").write_text(json.dumps(choice, indent=2), encoding="utf-8")
+    write_json(config.MODELS / "choice.json", choice)
     log.info("trained on %d rows to %s; publishing %s (%s)", len(table), sky.last_hour, choice["model"], choice.get("pinball10"))
     return 0
 
@@ -176,9 +177,17 @@ def load_ratio_state() -> dict:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
+def write_json(path, obj) -> None:
+    """Atomic JSON write: temp file in the same directory, then os.replace."""
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(obj, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def save_ratio_state(state: dict) -> None:
-    config.DATA.mkdir(parents=True, exist_ok=True)
-    (config.DATA / "node_ratio.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
+    write_json(config.DATA / "node_ratio.json", state)
 
 
 def sky_levels(site, issued_at: pd.Timestamp):
@@ -271,8 +280,8 @@ def cmd_ratio(args) -> int:
         prior = state.get(nd.id, {})
         try:
             records = influx.read_harvest(nd.id, since, settings, session)
-        except (influx.InfluxError, requests.RequestException) as exc:
-            log.error("%s: read failed: %s", nd.id, exc)
+        except Exception as exc:
+            log.exception("%s: read failed: %s", nd.id, exc)
             failed.append(nd.id)
             continue
         out = node.node_ratio(records, node.expected_energy_j(site, nd, k_actual), elev, previous=float(prior.get("ratio", 1.0)))
@@ -280,8 +289,8 @@ def cmd_ratio(args) -> int:
         is_default = bool(out.is_default and prior.get("is_default", True))
         try:
             influx.write_node_ratio(nd.id, now, out.ratio, out.usable_hours, settings, session)
-        except (influx.InfluxError, requests.RequestException) as exc:
-            log.error("%s: write failed: %s", nd.id, exc)
+        except Exception as exc:
+            log.exception("%s: write failed: %s", nd.id, exc)
             failed.append(nd.id)
             continue
         state[nd.id] = {"ratio": out.ratio, "usable_hours": out.usable_hours, "is_default": is_default, "updated": str(now)}

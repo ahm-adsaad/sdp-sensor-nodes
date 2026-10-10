@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 from dataclasses import dataclass
 
@@ -61,9 +62,13 @@ def save(sky: SkyModel, path: pathlib.Path) -> None:
     path = pathlib.Path(path)
     path.mkdir(parents=True, exist_ok=True)
     for name, b in sky.boosters.items():
-        b.save_model(str(path / f"{name}.txt"))
+        tmp = path / f"{name}.txt.tmp"
+        b.save_model(str(tmp))
+        os.replace(tmp, path / f"{name}.txt")
     meta = {"features": sky.features, "trained_rows": sky.trained_rows, "last_hour": sky.last_hour}
-    (path / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    tmp = path / "meta.json.tmp"
+    tmp.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    os.replace(tmp, path / "meta.json")
 
 
 def load(path: pathlib.Path) -> SkyModel:

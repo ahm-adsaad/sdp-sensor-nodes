@@ -45,3 +45,18 @@ def test_history_merges_on_hour_start(tmp_path):
     assert len(out) == 5
     assert out.set_index("hour_start")["x"].loc["2025-06-10 02:00"] == 2.0
     assert list(archive.load_history("missing", root=tmp_path).columns) == ["hour_start"]
+
+
+def test_append_leaves_no_temp_file(tmp_path):
+    issued = pd.Timestamp("2026-10-10 09:02", tz="UTC")
+    archive.append("forecast", frame("2026-10-10 09:00", 1.0), issued, root=tmp_path)
+    archive.save_history("sat", frame("2025-06-10 00:00", 1.0), root=tmp_path)
+    assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_latest_reads_only_the_newest_month(tmp_path):
+    archive.append("forecast", frame("2026-09-30 22:00", 1.0), pd.Timestamp("2026-09-30 22:02", tz="UTC"), root=tmp_path)
+    archive.append("forecast", frame("2026-10-01 00:00", 2.0), pd.Timestamp("2026-10-01 00:02", tz="UTC"), root=tmp_path)
+    (tmp_path / "forecast" / "2026-09.parquet").write_bytes(b"torn")       # an older month is unreadable
+    issued, rows = archive.latest("forecast", root=tmp_path)
+    assert issued == pd.Timestamp("2026-10-01 00:02", tz="UTC") and (rows["x"] == 2.0).all()

@@ -234,3 +234,31 @@ def test_ratio_continues_past_a_failing_node_and_saves_the_rest(tmp_path, monkey
     state = json.loads((tmp_path / "node_ratio.json").read_text())
     assert "node-01" not in state and abs(state["node-02"]["ratio"] - 0.7) < 0.01
     assert len(fake.lines) == 1 and fake.lines[0].startswith("node_ratio,node=node-02 ")
+
+
+def test_ratio_survives_an_unexpected_error_from_one_node(tmp_path, monkeypatch, site):
+    import simulate
+    import solar
+
+    nodes = [cli.config.Node("node-01", 1, 0, 180), cli.config.Node("node-02", 1, 0, 180)]
+    monkeypatch.setattr(cli, "load_site", lambda: site)
+    monkeypatch.setattr(cli, "load_nodes", lambda: nodes)
+    monkeypatch.setattr(cli.config, "DATA", tmp_path)
+    hs = pd.date_range("2025-06-03", periods=8 * 24, freq="h", tz="UTC")
+    sat = pd.DataFrame({"hour_start": hs, "sat_ghi": solar.clearsky(site, hs)["cs_ghi"].to_numpy() * 0.95, "sat_direct": 0.0, "sat_diffuse": 0.0})
+    monkeypatch.setattr(cli.feeds, "fetch_satellite", lambda site, s, e, **kw: sat)
+    recs = simulate.harvest_records(site, nodes[1], hs, pd.Series(0.95, index=hs), 0.7)
+
+    def read(node_id, since, settings, session=None):
+        if node_id == "node-01":
+            raise KeyError("energy_j")
+        return recs
+
+    monkeypatch.setattr(cli.influx, "read_harvest", read)
+    fake = FakeInflux()
+    monkeypatch.setattr(cli, "influx_session", lambda: fake)
+    monkeypatch.setattr(cli, "now_utc", lambda: hs[-1] + pd.Timedelta(days=2))
+    assert cli.main(["ratio"]) == 1
+    state = json.loads((tmp_path / "node_ratio.json").read_text())
+    assert "node-01" not in state and abs(state["node-02"]["ratio"] - 0.7) < 0.01
+    assert len(fake.lines) == 1 and fake.lines[0].startswith("node_ratio,node=node-02 ")

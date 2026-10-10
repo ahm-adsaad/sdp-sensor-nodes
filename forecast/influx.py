@@ -137,6 +137,9 @@ def read_harvest(node_id: str, since: pd.Timestamp, s: Settings, session=None) -
         raw = pd.read_csv(io.StringIO(r.text), comment="#")
         if raw.empty or "_time" not in raw.columns:
             return _empty_records()
+        missing = {"energy_j", "seconds"} - set(raw.columns)
+        if missing:
+            raise InfluxError(f"query result lacks {sorted(missing)}")
         out = pd.DataFrame(
             {
                 "node": node_id,
@@ -152,10 +155,14 @@ def read_harvest(node_id: str, since: pd.Timestamp, s: Settings, session=None) -
         r = http.get(f"{s.url}/query", params={"db": s.database, "q": q, "epoch": "ns"}, headers=a["headers"], auth=a["auth"], timeout=60)
         if not r.ok:
             raise InfluxError(f"query failed: HTTP {r.status_code} {r.text[:200]}")
-        results = json.loads(r.text).get("results", [{}])[0].get("series", [])
-        if not results:
+        payload = json.loads(r.text)
+        results = payload.get("results") or [{}]
+        if results[0].get("error"):
+            raise InfluxError(f"query error: {results[0]['error']}")
+        found = results[0].get("series", [])
+        if not found:
             return _empty_records()
-        series = results[0]
+        series = found[0]
         raw = pd.DataFrame(series["values"], columns=series["columns"])
         out = pd.DataFrame(
             {
