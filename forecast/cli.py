@@ -17,6 +17,9 @@ import features
 import feeds
 import metrics
 import model
+import node
+import simulate
+import solar
 
 log = logging.getLogger("forecast")
 
@@ -121,6 +124,27 @@ def cmd_backtest(args) -> int:
     return 0
 
 
+def cmd_dryrun(args) -> int:
+    """28 simulated days: soiling from day 11, cleaning on day 18, the store full 10:00-13:00 UTC daily."""
+    site = load_site()
+    nd = config.Node("sim-01", 1, 0.0, 180.0)
+    hs = pd.date_range("2025-06-01", periods=28 * 24, freq="h", tz="UTC")
+    k = pd.Series(0.95, index=hs)
+    day = pd.Series(((hs - hs[0]).days + 1), index=hs)
+    ratio = pd.Series(0.9, index=hs).where(~day.between(11, 17), 0.6)
+    full = pd.Series(hs.hour.isin([10, 11, 12]), index=hs)
+    recs = simulate.harvest_records(site, nd, hs, k, ratio, store_full=full)
+    expected = node.expected_energy_j(site, nd, k)
+    elev = solar.sun_position(site, hs)["elevation"]
+    previous = 1.0
+    for d in range(7, 29):
+        upto = recs[day.reindex(recs["hour_start"]).to_numpy() <= d]
+        out = node.node_ratio(upto, expected, elev, previous=previous)
+        previous = out.ratio
+        print(f"day-{d:02d} {out.ratio:.3f} usable={out.usable_hours} default={out.is_default}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forecast")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -134,6 +158,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_train)
     p = sub.add_parser("backtest", help="rolling monthly back-test on the public history; writes out/backtest.md")
     p.set_defaults(func=cmd_backtest)
+    p = sub.add_parser("dryrun", help="simulated node: the node ratio must follow an injected soiling drop and a cleaning")
+    p.set_defaults(func=cmd_dryrun)
     return parser
 
 
