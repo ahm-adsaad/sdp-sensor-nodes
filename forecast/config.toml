@@ -1,0 +1,40 @@
+# Site and node list for the harvest forecast. Secrets are not here; see README.
+
+[site]
+name = "University City, Sharjah"
+lat = 25.29
+lon = 55.48
+altitude_m = 23
+
+# One entry per node. panels: MP3-37 count on the lid. tilt_deg 0 = flat.
+# azimuth_deg 180 = facing south (pvlib convention, ignored when tilt is 0).
+
+[[nodes]]
+id = "node-01"
+panels = 1
+tilt_deg = 0
+azimuth_deg = 180
+
+[[nodes]]
+id = "node-02"
+panels = 1
+tilt_deg = 0
+azimuth_deg = 180
+
+[[nodes]]
+id = "node-03"
+panels = 1
+tilt_deg = 0
+azimuth_deg = 180
+
+[[nodes]]
+id = "node-04"
+panels = 1
+tilt_deg = 0
+azimuth_deg = 180
+
+[[nodes]]
+id = "node-05"
+panels = 1
+tilt_deg = 0
+azimuth_deg = 180

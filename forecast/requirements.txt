@@ -1,0 +1,6 @@
+lightgbm==4.7.0
+pvlib==0.16.1
+pandas==3.0.6
+pyarrow==26.0.0
+requests==2.34.2
+pytest>=8
