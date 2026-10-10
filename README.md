@@ -43,3 +43,4 @@ Do not use `LED_BUILTIN` — MegaCoreX maps it to PA7, the radio's NSS.
 
 - `docs/superpowers/specs/` — design specs
 - `docs/superpowers/plans/` — implementation plans
+- `forecast/` — harvest forecasting service (see `forecast/README.md`)

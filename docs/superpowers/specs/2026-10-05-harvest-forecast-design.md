@@ -1,7 +1,7 @@
 # Harvest forecasting (ML) — design
 
 Date: 2026-10-05
-Status: draft, waiting for review
+Status: approved 2026-10-10; plan at docs/superpowers/plans/2026-10-10-harvest-forecast.md
 
 ## Goal
 
@@ -45,6 +45,23 @@ Public data feeds, each checked with a live request for the site on 2026-10-05:
 | Open-Meteo historical forecast | stitched past forecasts back to at least 2022-06-01, with low, mid and high cloud | fallback training inputs |
 | Open-Meteo satellite radiation | hourly shortwave, direct and diffuse for 2025-06-01 | the "actual" sunlight for training |
 | NASA POWER hourly | all-sky and clear-sky surface shortwave, source SYN1deg | cross-check of the "actual" |
+
+Verified 2026-10-10 by live requests:
+
+- The satellite endpoint must be called with `models=eumetsat_sarah3`; without it the
+  service silently returns ERA5 reanalysis. SARAH-3 is complete at the site back to at
+  least 2022-06 and runs about 1.5 days behind. `eumetsat_lsa_saf_iodc` is under an hour
+  behind but starts only in 2025 with gaps; `satellite_radiation_seamless` has holes.
+- June 2025 daily sums: ERA5 / SARAH-3 = 0.92, day-ahead forecast / SARAH-3 = 0.95,
+  NASA POWER / SARAH-3 = 0.87 (NASA labels hours by interval start, Open-Meteo by
+  interval end). The "actual" is therefore only known to about 10 %; the node ratio
+  absorbs the constant part.
+- Previous-runs day-ahead values exist from between 2024-01-10 and 2024-06-10; low, mid
+  and high cloud cover are null at one-day lead, so only total cloud cover is a feature.
+- Open-Meteo's hourly value at HH:00 is the mean over the preceding hour, so rows are keyed
+  on hour start and sun geometry is evaluated at HH-0:30.
+- PPK2 CSV export header is `Timestamp(ms),Current(uA)` (optionally `D0-D7`), timestamps
+  relative to the recording start (from the Power Profiler app source).
 
 Sharjah sunlight over 2025-10-01 to 2026-09-28, from the Open-Meteo archive
 (reanalysis, not measurements): mean 5.82 kWh/m2 per day; 92 % of days within
