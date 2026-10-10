@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the feed fetch two minutes past every hour
+
+[Timer]
+OnCalendar=*-*-* *:02:00
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
