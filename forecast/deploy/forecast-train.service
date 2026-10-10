@@ -1,0 +1,10 @@
+[Unit]
+Description=Harvest forecast: extend the history and retrain the sky model
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__FORECAST_DIR__
+EnvironmentFile=-__FORECAST_DIR__/.env
+ExecStart=/bin/sh -c '__FORECAST_DIR__/.venv/bin/python cli.py fetch-history --start "$(date -u -d "-14 days" +%%F)" && __FORECAST_DIR__/.venv/bin/python cli.py train'

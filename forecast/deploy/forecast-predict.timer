@@ -1,0 +1,9 @@
+[Unit]
+Description=Publish the forecast twelve minutes past every hour, after the fetch
+
+[Timer]
+OnCalendar=*-*-* *:12:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

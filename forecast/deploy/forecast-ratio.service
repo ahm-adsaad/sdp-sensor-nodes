@@ -1,0 +1,10 @@
+[Unit]
+Description=Harvest forecast: update each node's ratio from harvest records
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__FORECAST_DIR__
+EnvironmentFile=-__FORECAST_DIR__/.env
+ExecStart=__FORECAST_DIR__/.venv/bin/python cli.py ratio
