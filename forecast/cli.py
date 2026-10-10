@@ -207,10 +207,14 @@ def sky_levels(site, issued_at: pd.Timestamp):
         test = pd.DataFrame({"hour_start": hours, "month": hours.month, "hour": hours.hour, "k_fc": 0.0}, index=hours)
         test = test[sun["elevation"] > config.MIN_ELEVATION_DEG]
         return "climatology", baselines.climatology(clim, test)
+    log.info("using forecast issued %s (%s old)", latest[0], issued_at - latest[0])
     weather = latest[1]
     air_frame = air[1] if air is not None and issued_at - air[0] <= STALE_FORECAST else None
     if air_frame is None:
         log.warning("no fresh air-quality feed; dust features left empty")
+    covered = int(weather["hour_start"].isin(hours).sum())
+    if covered < config.HORIZON_H:
+        log.warning("archived forecast covers %d of %d hours; the rest publish as 0", covered, config.HORIZON_H)
     f = features.build_features(site, weather, air_frame)
     f = f[f["hour_start"].isin(hours)].set_index("hour_start", drop=False)
     sky_path = config.MODELS / "sky" / "meta.json"

@@ -107,6 +107,9 @@ def test_predict_writes_36_hours_per_node(tmp_path, monkeypatch, site, fixture_j
     assert all("node_ratio_default=true" in l for l in fake.lines)
     saved = list((tmp_path / "forecasts").glob("*.parquet"))
     assert len(saved) == 1 and len(pd.read_parquet(saved[0])) == 72
+    df = pd.read_parquet(saved[0])
+    assert (df["q50_j"] > 0).sum() >= 24                      # at least 12 daylight hours per node
+    assert (df["q10_j"] <= df["q50_j"]).all() and (df["q50_j"] <= df["q90_j"]).all()
 
 
 def test_predict_refuses_stale_forecast(tmp_path, monkeypatch, site, fixture_json, trained_models):
@@ -121,6 +124,8 @@ def test_predict_refuses_stale_forecast(tmp_path, monkeypatch, site, fixture_jso
     monkeypatch.setattr(cli, "influx_session", lambda: fake)
     assert cli.main(["predict"]) == 0
     assert all(",model=climatology," in l for l in fake.lines) and len(fake.lines) == 36 * 5
+    saved = list((tmp_path / "forecasts").glob("*.parquet"))
+    assert len(saved) == 1 and pd.read_parquet(saved[0])["q50_j"].sum() > 0
 
 
 def test_predict_uses_raw_forecast_when_no_models(tmp_path, monkeypatch, site, fixture_json):

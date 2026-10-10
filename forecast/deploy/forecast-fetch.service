@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+User=__FORECAST_USER__
 Type=oneshot
 WorkingDirectory=__FORECAST_DIR__
 EnvironmentFile=-__FORECAST_DIR__/.env
