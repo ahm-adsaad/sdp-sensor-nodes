@@ -37,13 +37,15 @@ def node_ratio(
     window_days: int = 7,
     min_hours: int = 5,
     dark_frac: float = 0.02,
-    min_seconds: float = 1800.0,
+    min_seconds: float = 600.0,
 ) -> NodeRatio:
     """Median of measured / expected over usable hours in the last `window_days`.
 
-    Usable: sun above USABLE_ELEVATION_DEG, at least `min_seconds` measured, expected > 0,
+    Usable: sun above USABLE_ELEVATION_DEG, at least `min_seconds` of harvesting time, expected > 0,
     not flagged store_full, and not "dark" (measured under `dark_frac` of expected, which
-    is what a full store looks like from the panel side).
+    is what a full store looks like from the panel side). The ratio is on power (energy over
+    harvesting time against the expected hourly energy), so an hour where the store filled
+    part-way through still measures the panel.
     """
     if records.empty:
         return NodeRatio(previous, 0, True)
@@ -60,7 +62,8 @@ def node_ratio(
         & (r["expected_j"] > 0)
         & (~r["store_full"].astype(bool))
     )
-    hourly = r["energy_j"] / r["expected_j"]
+    # harvest power while the store was charging, against the expected power for the whole hour
+    hourly = (r["energy_j"] / r["seconds"].where(r["seconds"] > 0)) * 3600.0 / r["expected_j"]
     usable = ok & (hourly >= dark_frac)
     n = int(usable.sum())
     if n < min_hours:

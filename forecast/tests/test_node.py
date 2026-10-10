@@ -65,7 +65,9 @@ def test_node_ratio_infers_store_full_from_dark_hours(site, node_cfg):
     midday = recs["hour_start"].dt.hour.between(7, 11)
     recs.loc[midday, "energy_j"] = 0.0                               # panel current gone while the sun is up
     out = node.node_ratio(recs, node.expected_energy_j(site, node_cfg, k), elevation(site, k.index))
+    base = node.node_ratio(records_for(site, node_cfg, 7, 0.8)[0], node.expected_energy_j(site, node_cfg, k), elevation(site, k.index))
     assert abs(out.ratio - 0.8) < 0.01
+    assert out.usable_hours == base.usable_hours - 5 * 7
 
 
 def test_node_ratio_ignores_short_hours(site, node_cfg):
@@ -74,8 +76,8 @@ def test_node_ratio_ignores_short_hours(site, node_cfg):
     base = node.node_ratio(clean, expected, elevation(site, k.index))
     recs = clean.copy()
     at_five = recs["hour_start"].dt.hour == 5                        # a daylight hour, 7 rows
-    recs.loc[at_five, "seconds"] = 600.0
-    recs.loc[at_five, "energy_j"] = recs.loc[at_five, "energy_j"] * 0.5   # would drag the ratio down if counted
+    recs.loc[at_five, "seconds"] = 300.0                             # under the 600 s minimum
+    recs.loc[at_five, "energy_j"] = recs.loc[at_five, "energy_j"] * 300 / 3600   # would drag the ratio down if counted
     out = node.node_ratio(recs, expected, elevation(site, k.index))
     assert abs(out.ratio - 0.8) < 0.01
     assert out.usable_hours == base.usable_hours - 7
@@ -111,3 +113,15 @@ def test_node_forecast_scales_and_fills_night_with_zero(site, node_cfg):
     assert abs(by_hour.loc[noon, "q50_j"] - e[noon] * 0.8 * 0.9) < 1e-6
     assert (by_hour.loc[night] == 0).all().all()
     assert (f["q10_j"] <= f["q50_j"]).all() and (f["q50_j"] <= f["q90_j"]).all()
+
+
+def test_node_ratio_measures_power_when_the_store_fills_mid_hour(site, node_cfg):
+    clean, k = records_for(site, node_cfg, 7, 0.8)
+    expected = node.expected_energy_j(site, node_cfg, k)
+    base = node.node_ratio(clean, expected, elevation(site, k.index))
+    recs = clean.copy()
+    at_nine = recs["hour_start"].dt.hour == 9                        # store full after twenty minutes
+    recs.loc[at_nine, "seconds"] = 1200.0
+    recs.loc[at_nine, "energy_j"] = recs.loc[at_nine, "energy_j"] * 1200 / 3600
+    out = node.node_ratio(recs, expected, elevation(site, k.index))
+    assert abs(out.ratio - 0.8) < 0.01 and out.usable_hours == base.usable_hours

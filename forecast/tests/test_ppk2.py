@@ -43,7 +43,7 @@ def test_partial_hour_keeps_seconds():
 def test_negative_current_counts_as_zero_harvest():
     s = pd.DataFrame({"t_ms": [0, 1000, 2000], "current_ua": [-500.0, -500.0, -500.0]})
     r = ppk2.hourly_energy(s, "2026-10-14T06:00:00Z", volts=3.0, node_id="n")
-    assert r["energy_j"].iloc[0] == 0.0 and r["seconds"].iloc[0] == 3.0
+    assert r["energy_j"].iloc[0] == 0.0 and r["seconds"].iloc[0] == 0.0
 
 
 def test_recording_gap_adds_neither_seconds_nor_energy():
@@ -53,3 +53,14 @@ def test_recording_gap_adds_neither_seconds_nor_energy():
     assert abs(r.loc[h0, "seconds"] - 4.0) < 1e-9
     assert abs(r.loc[h1, "seconds"] - 1.0) < 1e-9                    # the 3,599 s pause is not credited
     assert abs(r.loc[h1, "energy_j"] - 0.010 * 3.0 * 1.0) < 1e-9
+
+
+def test_seconds_count_only_the_time_the_panel_delivers_current():
+    # 20 minutes at 30 mA (store charging), then 40 minutes of 50 uA trickle (store full), 10 s samples
+    t_ms = [i * 10_000 for i in range(360)]
+    current = [30000.0] * 120 + [50.0] * 240
+    s = pd.DataFrame({"t_ms": t_ms, "current_ua": current})
+    r = ppk2.hourly_energy(s, "2026-10-14T06:00:00Z", volts=3.0, node_id="n").set_index("hour_start")
+    row = r.loc[pd.Timestamp("2026-10-14 06:00", tz="UTC")]
+    assert abs(row["seconds"] - 1200) <= 10
+    assert 108.0 <= row["energy_j"] <= 109.0           # 0.030 A x 3 V x 1200 s, plus a negligible trickle
