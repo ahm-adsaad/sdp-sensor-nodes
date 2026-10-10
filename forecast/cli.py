@@ -10,6 +10,7 @@ import sys
 import pandas as pd
 
 import archive
+import backtest
 import baselines
 import config
 import features
@@ -108,6 +109,18 @@ def cmd_train(args) -> int:
     return 0
 
 
+def cmd_backtest(args) -> int:
+    table = load_training_table(load_site())
+    if backtest.year_month(table["hour_start"]).nunique() < 8:
+        log.error("need at least 8 months of history for a back-test")
+        return 1
+    preds = backtest.run(table)
+    path = backtest.write_report(preds, config.OUT)
+    log.info("wrote %s", path)
+    print(backtest.summarize(preds).to_string(index=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forecast")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -119,6 +132,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_fetch_history)
     p = sub.add_parser("train", help="train the sky model on the history and pick the model to publish")
     p.set_defaults(func=cmd_train)
+    p = sub.add_parser("backtest", help="rolling monthly back-test on the public history; writes out/backtest.md")
+    p.set_defaults(func=cmd_backtest)
     return parser
 
 
