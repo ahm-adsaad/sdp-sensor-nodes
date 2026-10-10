@@ -205,6 +205,17 @@ blind spot). With no usable hours the node ratio keeps its last value; before
 any measurement it is 1.0, which overstates harvest and is flagged in the
 output.
 
+Amended 2026-10-10 after the final review: on a 150 F store the "not full"
+condition holds for only part of most daylight hours, so an hourly energy
+ratio would measure consumption rather than the panel. With the PPK2 on the
+panel line the current trace shows when the store is charging, so a record's
+`seconds` is the time the panel delivered current (above 20 % of the hour's
+95th-percentile current and above 100 uA), the ratio is taken on harvest
+power over that time against the expected power, and hours with under 600 s
+of charging are unusable. Simulated and uplink records carry 3600 s and are
+unchanged. The ratio keeps its measured flag through days with no usable
+hours; it is only "default" until the first measurement.
+
 Forecast for a node and hour:
 
 ```

@@ -3469,6 +3469,29 @@ git push origin main
 
 ---
 
+## Amendments from the final whole-branch review (2026-10-10)
+
+Applied after all eleven tasks, in one fix wave; the code blocks above are
+the original argument and the code in `forecast/` is the truth.
+
+- Every Parquet and JSON the service writes (archive months, history, harvest
+  records, `node_ratio.json`, `choice.json`, `raw_forecast.json`, the saved
+  boosters) goes through a temp file and `os.replace`, so a kill mid-write
+  never leaves a torn file that would fail `fetch` and `predict` every hour.
+- `archive.latest` reads only the newest month file.
+- Node ratio on harvesting power: `ppk2.hourly_energy` sets `seconds` to the
+  time the panel delivered current (above 20 % of the hour's 95th-percentile
+  current and above 100 uA); `node.node_ratio` takes measured power over that
+  time against expected power and needs 600 s (not 1800 s) of charging. Review
+  Focus item 4 reads accordingly.
+- `cmd_ratio` isolates every per-node exception, and `influx.read_harvest`
+  raises `InfluxError` on a v1 query error or a Flux result missing fields.
+- The units run as the installing user (`User=`), `install.sh` refuses root
+  and warns on a missing `.env`, and the README's deploy sequence includes the
+  one-off `fetch-history` + `train` and the `.env` export for hand-run commands.
+- `sky_levels` logs the archived forecast's age and warns on short coverage;
+  the predict tests assert non-zero daylight output and level ordering.
+
 ## Self-review against the spec
 
 - Goal, three levels, 36 hours, VPS: Tasks 6 and 10.
