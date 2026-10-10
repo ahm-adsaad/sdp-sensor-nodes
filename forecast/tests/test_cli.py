@@ -186,3 +186,51 @@ def test_selfcheck_prints_ages(tmp_path, monkeypatch, site, fixture_json, traine
     assert cli.main(["selfcheck"]) == 0
     out = capsys.readouterr().out
     assert "forecast" in out and "air_quality" in out and "sky model" in out and "node-01" in out
+
+
+def test_ratio_keeps_measured_flag_when_a_day_has_no_usable_hours(tmp_path, monkeypatch, site):
+    import solar
+
+    nd = cli.config.Node("node-01", 1, 0, 180)
+    monkeypatch.setattr(cli, "load_site", lambda: site)
+    monkeypatch.setattr(cli, "load_nodes", lambda: [nd])
+    monkeypatch.setattr(cli.config, "DATA", tmp_path)
+    cli.save_ratio_state({"node-01": {"ratio": 0.7, "usable_hours": 40, "is_default": False, "updated": "x"}})
+    hs = pd.date_range("2025-06-03", periods=8 * 24, freq="h", tz="UTC")
+    sat = pd.DataFrame({"hour_start": hs, "sat_ghi": solar.clearsky(site, hs)["cs_ghi"].to_numpy() * 0.95, "sat_direct": 0.0, "sat_diffuse": 0.0})
+    monkeypatch.setattr(cli.feeds, "fetch_satellite", lambda site, s, e, **kw: sat)
+    monkeypatch.setattr(cli.influx, "read_harvest", lambda node_id, since, settings, session=None: cli.archive.load_records("none", root=tmp_path))
+    fake = FakeInflux()
+    monkeypatch.setattr(cli, "influx_session", lambda: fake)
+    monkeypatch.setattr(cli, "now_utc", lambda: hs[-1] + pd.Timedelta(days=2))
+    assert cli.main(["ratio"]) == 0
+    state = json.loads((tmp_path / "node_ratio.json").read_text())
+    assert state["node-01"]["ratio"] == 0.7 and not state["node-01"]["is_default"]
+
+
+def test_ratio_continues_past_a_failing_node_and_saves_the_rest(tmp_path, monkeypatch, site):
+    import simulate
+    import solar
+
+    nodes = [cli.config.Node("node-01", 1, 0, 180), cli.config.Node("node-02", 1, 0, 180)]
+    monkeypatch.setattr(cli, "load_site", lambda: site)
+    monkeypatch.setattr(cli, "load_nodes", lambda: nodes)
+    monkeypatch.setattr(cli.config, "DATA", tmp_path)
+    hs = pd.date_range("2025-06-03", periods=8 * 24, freq="h", tz="UTC")
+    sat = pd.DataFrame({"hour_start": hs, "sat_ghi": solar.clearsky(site, hs)["cs_ghi"].to_numpy() * 0.95, "sat_direct": 0.0, "sat_diffuse": 0.0})
+    monkeypatch.setattr(cli.feeds, "fetch_satellite", lambda site, s, e, **kw: sat)
+    recs = simulate.harvest_records(site, nodes[1], hs, pd.Series(0.95, index=hs), 0.7)
+
+    def read(node_id, since, settings, session=None):
+        if node_id == "node-01":
+            raise cli.influx.InfluxError("boom")
+        return recs
+
+    monkeypatch.setattr(cli.influx, "read_harvest", read)
+    fake = FakeInflux()
+    monkeypatch.setattr(cli, "influx_session", lambda: fake)
+    monkeypatch.setattr(cli, "now_utc", lambda: hs[-1] + pd.Timedelta(days=2))
+    assert cli.main(["ratio"]) == 1
+    state = json.loads((tmp_path / "node_ratio.json").read_text())
+    assert "node-01" not in state and abs(state["node-02"]["ratio"] - 0.7) < 0.01
+    assert len(fake.lines) == 1 and fake.lines[0].startswith("node_ratio,node=node-02 ")

@@ -258,27 +258,38 @@ def cmd_ratio(args) -> int:
         log.error("satellite feed: %s", exc)
         return 1
     sat = sat.dropna(subset=["sat_ghi"])
+    if sat.empty:
+        log.error("satellite feed returned no hours since %s", since.date())
+        return 1
     hs = config.utc_ns(sat["hour_start"])
     cs = solar.clearsky(site, hs)
     k_actual = features.sky_ratio(pd.Series(sat["sat_ghi"].to_numpy(), index=hs), cs["cs_ghi"]).fillna(0.0)
     elev = solar.sun_position(site, hs)["elevation"]
     settings, session, state = influx.from_env(), influx_session(), load_ratio_state()
+    failed = []
     for nd in nodes:
+        prior = state.get(nd.id, {})
         try:
             records = influx.read_harvest(nd.id, since, settings, session)
         except (influx.InfluxError, requests.RequestException) as exc:
             log.error("%s: read failed: %s", nd.id, exc)
-            return 1
-        previous = float(state.get(nd.id, {}).get("ratio", 1.0))
-        out = node.node_ratio(records, node.expected_energy_j(site, nd, k_actual), elev, previous=previous)
-        state[nd.id] = {"ratio": out.ratio, "usable_hours": out.usable_hours, "is_default": out.is_default, "updated": str(now)}
-        log.info("%s: ratio %.3f from %d usable hours%s", nd.id, out.ratio, out.usable_hours, " (default kept)" if out.is_default else "")
+            failed.append(nd.id)
+            continue
+        out = node.node_ratio(records, node.expected_energy_j(site, nd, k_actual), elev, previous=float(prior.get("ratio", 1.0)))
+        # a kept-previous ratio is still a measured one if the previous value was measured
+        is_default = bool(out.is_default and prior.get("is_default", True))
         try:
             influx.write_node_ratio(nd.id, now, out.ratio, out.usable_hours, settings, session)
         except (influx.InfluxError, requests.RequestException) as exc:
             log.error("%s: write failed: %s", nd.id, exc)
-            return 1
+            failed.append(nd.id)
+            continue
+        state[nd.id] = {"ratio": out.ratio, "usable_hours": out.usable_hours, "is_default": is_default, "updated": str(now)}
+        log.info("%s: ratio %.3f from %d usable hours%s", nd.id, out.ratio, out.usable_hours, " (previous kept)" if out.is_default else "")
     save_ratio_state(state)
+    if failed:
+        log.error("ratio update failed for %s", ", ".join(failed))
+        return 1
     return 0
 
 
