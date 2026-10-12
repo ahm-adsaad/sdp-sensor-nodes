@@ -35,12 +35,15 @@ cd forecast
 
 ## Deploy
 
-Needs Python 3.11 or newer with `python3-venv`. Everything runs as one unprivileged user that owns the checkout;
-the systemd units run as that user too.
+Needs Python 3.11 or newer with `python3-venv`. Everything runs as one unprivileged user with sudo that owns the
+checkout; the systemd units run as that user too (`adduser forecast && usermod -aG sudo forecast` if the server only
+has root). The repository is private: make a read-only deploy key on the server
+(`ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519`), add its `.pub` under the repository's Settings, Deploy keys,
+and clone over SSH.
 
 ```bash
-sudo git clone https://github.com/ahm-ad-saad/sdp-sensor-nodes /opt/sdp-sensor-nodes
-sudo chown -R "$USER" /opt/sdp-sensor-nodes
+sudo mkdir -p /opt/sdp-sensor-nodes && sudo chown "$USER" /opt/sdp-sensor-nodes
+git clone git@github.com:ahm-adsaad/sdp-sensor-nodes.git /opt/sdp-sensor-nodes
 cd /opt/sdp-sensor-nodes/forecast
 nano .env                                  # see the variables below; write it BEFORE install.sh, the timers start at once
 bash deploy/install.sh                     # venv, pip, units, timers

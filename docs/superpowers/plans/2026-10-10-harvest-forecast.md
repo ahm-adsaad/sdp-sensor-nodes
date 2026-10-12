@@ -1061,7 +1061,7 @@ git push origin main
 On the VPS (the user runs these over SSH; Python 3.11 or newer is required):
 
 ```bash
-sudo git clone https://github.com/ahm-ad-saad/sdp-sensor-nodes /opt/sdp-sensor-nodes   # or git -C /opt/sdp-sensor-nodes pull
+sudo git clone https://github.com/ahm-adsaad/sdp-sensor-nodes /opt/sdp-sensor-nodes   # or git -C /opt/sdp-sensor-nodes pull
 sudo chown -R "$USER" /opt/sdp-sensor-nodes
 bash /opt/sdp-sensor-nodes/forecast/deploy/install.sh
 cd /opt/sdp-sensor-nodes/forecast && .venv/bin/python cli.py fetch
@@ -3395,7 +3395,7 @@ cd forecast
 ## Deploy
 
 ```bash
-sudo git clone https://github.com/ahm-ad-saad/sdp-sensor-nodes /opt/sdp-sensor-nodes
+sudo git clone https://github.com/ahm-adsaad/sdp-sensor-nodes /opt/sdp-sensor-nodes
 bash /opt/sdp-sensor-nodes/forecast/deploy/install.sh
 ```
 
