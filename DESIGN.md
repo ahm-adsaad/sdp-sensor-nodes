@@ -264,6 +264,9 @@ White or tinted fill with a thin stroke in the group's colour, a 700-weight part
 ### Schedule Strip
 Per-node rows of rounded segments in the data palette, each labelled inside, with a 1.4-unit Harvest Green line beneath every row for continuous harvesting and a legend above.
 
+### Lifecycle Lanes
+Two stacked flow lanes for a before/after comparison (poster-sustainability.html, section II). The conventional lane is drawn in neutral greys only: white boxes, Faded Graphite strokes and arrows, never a data colour, because it carries no harvested energy. The harvesting lane reuses the Diagram Box energy styling (Harvest Wash, Harvest Green). The lane's end state that carries the argument ("Node discarded: e-waste") takes a solid Proof Ink stroke at 1.1 units and ink sublabels, so it is the heaviest box in its lane. Lane titles are 700-weight ink labels above each lane, not captions. A booktabs comparison table sits directly below, one row per aspect.
+
 ### Reference List
 Bracketed numbers hanging 12 mm, three columns, IEEE citation style with italic venues.
 
