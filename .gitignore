@@ -11,3 +11,6 @@ forecast/.venv/
 forecast/data/
 forecast/models/
 forecast/.env
+
+# LoRaWAN OTAA keys stay local
+secrets.h
