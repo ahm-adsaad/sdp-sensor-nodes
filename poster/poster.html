@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Virtualized EH IoT Poster</title>
+<style>
+  @font-face { font-family: "STIX Two Text"; font-weight: 400; font-style: normal; src: url(fonts/stix-two-text-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: "STIX Two Text"; font-weight: 400; font-style: italic; src: url(fonts/stix-two-text-latin-400-italic.woff2) format("woff2"); }
+  @font-face { font-family: "STIX Two Text"; font-weight: 600; font-style: normal; src: url(fonts/stix-two-text-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: "STIX Two Text"; font-weight: 700; font-style: normal; src: url(fonts/stix-two-text-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family: "STIX Two Text"; font-weight: 700; font-style: italic; src: url(fonts/stix-two-text-latin-700-italic.woff2) format("woff2"); }
+  @font-face { font-family: "STIX Two Text"; font-weight: 400; font-style: normal; src: url(fonts/stix-two-text-greek-400-normal.woff2) format("woff2"); unicode-range: U+0370-03FF; }
+  @font-face { font-family: "STIX Two Text"; font-weight: 400; font-style: italic; src: url(fonts/stix-two-text-greek-400-italic.woff2) format("woff2"); unicode-range: U+0370-03FF; }
+  @font-face { font-family: "STIX Two Math"; font-weight: 400; src: url(fonts/stix-two-math-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Source Sans 3"; font-weight: 400; src: url(fonts/source-sans-3-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Source Sans 3"; font-weight: 600; src: url(fonts/source-sans-3-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Source Sans 3"; font-weight: 700; src: url(fonts/source-sans-3-latin-700-normal.woff2) format("woff2"); }
+
+  @page { size: 841mm 1189mm; margin: 0; }
+
+  :root {
+    --maroon: #880e12;
+    --ink: #1d1f24;
+    --ink-2: #4a4740;
+    --hair: #d9d3cb;
+    --paper: #ffffff;
+    --serif: "STIX Two Text", "STIX Two Math", "Times New Roman", serif;
+    --math: "STIX Two Math", "STIX Two Text", serif;
+    --diagram: "Source Sans 3", "STIX Two Text", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  ::selection { background: var(--maroon); color: #fff; }
+  html, body { margin: 0; background: var(--paper); }
+  body {
+    width: 841mm; height: 1189mm; overflow: hidden;
+    font-family: var(--serif); color: var(--ink);
+    font-size: 27pt; line-height: 1.3;
+    font-variant-numeric: lining-nums;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+
+  .poster { width: 841mm; height: 1189mm; display: flex; flex-direction: column; }
+
+  /* Title band */
+  .band {
+    background: var(--maroon); color: #fff;
+    padding: 19mm 26mm 18mm 24mm;
+    display: grid; grid-template-columns: 134mm 1fr; column-gap: 20mm; align-items: center;
+  }
+  .seal { width: 134mm; height: 134mm; border-radius: 50%; background: #fff; padding: 6mm; }
+  .seal img { width: 100%; height: 100%; display: block; border-radius: 50%; }
+  .band h1 {
+    margin: 0 0 7mm; font-weight: 700; font-size: 86pt; line-height: 1.04;
+    letter-spacing: -0.012em; text-wrap: balance;
+  }
+  .authors { font-size: 38pt; line-height: 1.2; margin: 0 0 3mm; }
+  .affil { font-size: 29pt; line-height: 1.25; margin: 0; color: #f3dfe0; }
+  .affil b { font-weight: 600; color: #fff; }
+
+  /* Body grid */
+  main {
+    flex: 1; min-height: 0;
+    padding: 14mm 20mm 15mm;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    column-gap: 16mm; row-gap: 12mm;
+  }
+  .col { display: flex; flex-direction: column; justify-content: space-between; gap: 10mm; min-height: 0; }
+  .r1c1 { grid-row: 1; grid-column: 1; display: flex; flex-direction: column; }
+  .r1c23 { grid-row: 1; grid-column: 2 / span 2; }
+  .c1 { grid-row: 2; grid-column: 1; }
+  .c2 { grid-row: 2; grid-column: 2; }
+  .c3 { grid-row: 2; grid-column: 3; }
+  .foot { grid-row: 3; grid-column: 1 / span 3; }
+
+  section > h2 {
+    margin: 0 0 5mm; padding-bottom: 2.2mm;
+    font-size: 36pt; line-height: 1.1; font-weight: 700;
+    font-variant-caps: small-caps; letter-spacing: 0.02em;
+    color: var(--maroon); border-bottom: 1.3mm solid var(--maroon);
+  }
+  h3 { margin: 6mm 0 2.5mm; font-size: 29pt; font-weight: 400; font-style: italic; line-height: 1.2; }
+  h2 + h3 { margin-top: 0; }
+  p { margin: 0 0 3.5mm; text-align: justify; hyphens: auto; }
+  p:last-child { margin-bottom: 0; }
+  ul { margin: 0; padding-left: 7mm; }
+  li { margin: 0 0 3.5mm; text-align: justify; hyphens: auto; }
+  li:last-child { margin-bottom: 0; }
+  li::marker { color: var(--maroon); }
+  .cite { white-space: nowrap; }
+  sub, sup { line-height: 0; }
+
+  figure { margin: 0 0 4mm; }
+  figure svg { display: block; width: 100%; height: auto; }
+
+  /* booktabs tables */
+  table { width: 100%; border-collapse: collapse; font-size: 22.5pt; line-height: 1.22; margin: 1mm 0 4mm; }
+  thead th {
+    text-align: left; font-weight: 600; font-variant-caps: small-caps; letter-spacing: 0.02em;
+    border-top: 0.75mm solid var(--ink); border-bottom: 0.4mm solid var(--ink);
+    padding: 2mm 2.5mm 1.8mm;
+  }
+  tbody td { padding: 2.1mm 2.5mm; vertical-align: top; }
+  tbody tr + tr td { border-top: 0.2mm solid var(--hair); }
+  tbody tr:last-child td { border-bottom: 0.75mm solid var(--ink); }
+  td:first-child, th:first-child { padding-left: 0; }
+  td:last-child, th:last-child { padding-right: 0; }
+  tr.ours td { font-weight: 700; }
+  td.num, th.num { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums lining-nums; }
+  .r1c1 table { margin-bottom: 5mm; font-size: 23.5pt; }
+  .r1c1 tbody td { padding-top: 3.6mm; padding-bottom: 3.6mm; }
+  .r1c1 .goal { margin-top: auto; }
+  .choices td:nth-child(2), .choices td:nth-child(3) { white-space: nowrap; }
+
+  /* math */
+  math { font-family: var(--math); font-size: 1.04em; }
+  .eq { display: grid; grid-template-columns: 1fr auto; align-items: center; margin: 5.5mm 0 7mm; }
+  .eq math { justify-self: center; font-size: 1.12em; }
+  .eqn { font-size: 25pt; }
+  .st { display: grid; grid-template-columns: 22mm 1fr auto; align-items: center; margin: 1.5mm 0 4.5mm; }
+  .st math { justify-self: center; font-size: 1.12em; }
+  .st .lbl { font-style: italic; padding-left: 4mm; }
+
+  /* algorithm2e-style ruled block */
+  .algo { border-top: 0.75mm solid var(--ink); border-bottom: 0.75mm solid var(--ink); padding: 2.5mm 0 3mm; font-size: 24pt; line-height: 1.55; margin: 5mm 0 6.5mm; }
+  .algo .io { padding: 0 0 2.2mm; border-bottom: 0.4mm solid var(--ink); margin-bottom: 2.2mm; }
+  .algo ol { list-style: none; margin: 0; padding: 0; counter-reset: ln; }
+  .algo li { counter-increment: ln; position: relative; padding-left: 14mm; margin: 0; }
+  .algo li::before { content: counter(ln); position: absolute; left: 0; width: 8mm; text-align: right; font-size: 18pt; color: var(--ink-2); top: 0.8mm; }
+  .algo .i1 { padding-left: 23mm; } .algo .i2 { padding-left: 32mm; } .algo .i3 { padding-left: 41mm; }
+  .algo .cm { float: right; color: var(--ink-2); font-style: italic; }
+  .algo .cm::before { content: "\25B7\2009"; font-style: normal; }
+  .v { font-style: italic; }
+
+  .refs { columns: 3; column-gap: 16mm; font-size: 16pt; line-height: 1.26; }
+  .refs ol { margin: 0; padding: 0; list-style: none; counter-reset: rf; }
+  .refs li { counter-increment: rf; position: relative; padding-left: 12mm; margin: 0 0 1.5mm; break-inside: avoid; }
+  .refs li::before { content: "[" counter(rf) "]"; position: absolute; left: 0; }
+  .foot h2 { font-size: 27pt; margin-bottom: 4mm; }
+  .ack { font-size: 18pt; margin-top: 4mm; text-align: left; }
+
+  svg { fill: var(--ink); }
+  svg text { font-family: var(--diagram); }
+</style>
+</head>
+<body>
+<div class="poster">
+
+  <header class="band">
+    <div class="seal"><img src="assets/aus-seal.png" alt="American University of Sharjah seal"></div>
+    <div>
+      <h1>A Practical Implementation of a Virtualized Energy Harvesting IoT</h1>
+      <p class="authors">Ahmad Saad, Abdulrahman Hanifa, Mohammad Alatrash, Abdalrahman Al-Zaharna</p>
+      <p class="affil"><b>Advisor:</b> Dr. Anastassia Gharib<br>Department of Computer Science and Engineering, American University of Sharjah</p>
+    </div>
+  </header>
+
+  <main>
+
+    <section class="r1c1">
+      <h2>I. Motivation</h2>
+      <p>Battery-powered sensor nodes need periodic battery replacement, which hinders scalable long-term operation; batteries degrade, and replacing them can be costly or dangerous <span class="cite">[1]</span>. Energy harvesting (EH) removes the battery, but harvested energy is intermittent.</p>
+      <p>EH, sensor-node virtualization and dynamic task assignment have been studied separately; few works implement them together in hardware.</p>
+      <table>
+        <thead><tr><th>Work</th><th>Covers</th><th>Lacks</th></tr></thead>
+        <tbody>
+          <tr><td>[2]</td><td>Solar EH, deployed six months</td><td>One sensor per node</td></tr>
+          <tr><td>[3]</td><td>Solar EH, node virtualization</td><td>Reconfiguration across task types</td></tr>
+          <tr><td>[4]</td><td>Solar EH, task scheduling</td><td>Tasks fixed in advance</td></tr>
+          <tr><td>[5]</td><td>Virtualization, dynamic task arrival</td><td>Energy harvesting</td></tr>
+          <tr class="ours"><td>Ours</td><td colspan="2">Solar EH, node virtualization and dynamic task assignment on custom nodes</td></tr>
+        </tbody>
+      </table>
+      <p class="goal">Goal: use harvested energy efficiently, maximize the task completion rate and minimize latency.</p>
+    </section>
+
+    <section class="r1c23">
+      <h2>II. System Model</h2>
+      <figure>
+        <svg viewBox="0 0 528 262" role="img" aria-label="Four solar-powered sensor nodes send data over LoRaWAN to a gateway, which forwards it to a virtual private server running an MQTT broker, ChirpStack, Node-RED, InfluxDB and Grafana; users submit tasks and monitor dashboards.">
+          <defs>
+            <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.2" markerHeight="4.2" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3a6ea5"/></marker>
+            <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.2" markerHeight="4.2" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b5373d"/></marker>
+            <g id="pv">
+              <rect x="0" y="0" width="22" height="11" rx="0.8" fill="#eaf3ee" stroke="#2e7d5b" stroke-width="0.6"/>
+              <path d="M5.5 0 V11 M11 0 V11 M16.5 0 V11 M0 5.5 H22" stroke="#2e7d5b" stroke-width="0.45"/>
+            </g>
+            <g id="chipOn">
+              <rect x="0" y="0" width="71" height="28" rx="1.8" fill="#b8861b"/>
+            </g>
+            <g id="chipOff">
+              <rect x="0" y="0" width="71" height="28" rx="1.8" fill="#fff" stroke="#b9b2a9" stroke-width="0.55"/>
+            </g>
+          </defs>
+
+          <text x="0" y="13" font-size="7.4" font-weight="600" fill="#4a4740">Solar EH sensor nodes</text>
+
+          <!-- sensor nodes: y = 22, 83, 144, 205 -->
+          <g id="nodes"></g>
+
+          <!-- LoRaWAN star -->
+          <path d="M160 48 H172 M160 109 H172 M160 170 H172 M160 231 H172 M172 48 V231" stroke="#77726a" stroke-width="0.6" fill="none" stroke-dasharray="2.2 1.6"/>
+          <line x1="210" y1="82" x2="174.5" y2="82" stroke="#3a6ea5" stroke-width="1.2" marker-end="url(#ab)"/>
+          <line x1="174.5" y1="96" x2="210" y2="96" stroke="#b5373d" stroke-width="1.2" marker-end="url(#at)"/>
+          <g font-size="7" fill="#4a4740">
+            <text x="176.5" y="116" font-weight="700" fill="#1d1f24">LoRaWAN</text>
+            <text x="176.5" y="125">EU868</text>
+            <text x="176.5" y="134">Class A</text>
+          </g>
+
+          <!-- gateway -->
+          <path d="M262 40 V27 M255.5 29.5 L262 27 L268.5 29.5" stroke="#1d1f24" stroke-width="0.8" fill="none"/>
+          <rect x="212" y="40" width="100" height="100" rx="2.5" fill="#fff" stroke="#1d1f24" stroke-width="0.6"/>
+          <g text-anchor="middle">
+            <text x="262" y="53" font-size="8" font-weight="700">LoRaWAN gateway</text>
+            <text x="262" y="63" font-size="6.9" fill="#4a4740">RAK WisGate Edge Lite 2</text>
+            <line x1="219" y1="68.5" x2="305" y2="68.5" stroke="#d9d3cb" stroke-width="0.45"/>
+            <text x="262" y="80" font-size="7">Semtech UDP</text>
+            <text x="262" y="88.5" font-size="7">Packet Forwarder</text>
+            <text x="262" y="102" font-size="7">ChirpStack</text>
+            <text x="262" y="110.5" font-size="7">MQTT Forwarder</text>
+            <text x="262" y="129" font-size="6.9" fill="#4a4740">12 V DC, Wi-Fi uplink</text>
+          </g>
+
+          <!-- gateway to VPS -->
+          <line x1="358" y1="46" x2="314" y2="46" stroke="#3a6ea5" stroke-width="1.2" marker-end="url(#ab)"/>
+          <line x1="314" y1="58" x2="358" y2="58" stroke="#b5373d" stroke-width="1.2" marker-end="url(#at)"/>
+          <text x="332" y="31" text-anchor="middle" font-size="6.9" fill="#4a4740">Wi-Fi</text>
+          <text x="332" y="39.5" text-anchor="middle" font-size="6.9" fill="#4a4740">MQTT</text>
+
+          <!-- flow key -->
+          <g font-size="7">
+            <line x1="212" y1="166" x2="232" y2="166" stroke="#3a6ea5" stroke-width="1.2" marker-start="url(#ab)"/>
+            <text x="237" y="168.6" font-weight="700" font-size="7.6">Task</text>
+            <text x="212" y="179" fill="#4a4740">sensor type, duration,</text>
+            <text x="212" y="188" fill="#4a4740">sampling frequency, priority</text>
+            <line x1="212" y1="205" x2="232" y2="205" stroke="#b5373d" stroke-width="1.2" marker-end="url(#at)"/>
+            <text x="237" y="207.6" font-weight="700" font-size="7.6">Data + status</text>
+            <text x="212" y="218" fill="#4a4740">readings, stored and harvested</text>
+            <text x="212" y="227" fill="#4a4740">energy, CPU and memory use,</text>
+            <text x="212" y="236" fill="#4a4740">execution time</text>
+          </g>
+
+          <!-- VPS -->
+          <rect x="350" y="12" width="114" height="234" rx="3" fill="#f6e9ea" stroke="#880e12" stroke-width="0.8"/>
+          <text x="407" y="24.5" text-anchor="middle" font-size="7.8" font-weight="700" fill="#880e12">Virtual private server</text>
+          <g text-anchor="middle" font-size="7.6">
+            <rect x="359" y="32" width="96" height="32" rx="1.8" fill="#fff" stroke="#1d1f24" stroke-width="0.55"/>
+            <text x="407" y="50.5" font-weight="700">MQTT broker</text>
+            <rect x="359" y="74" width="96" height="32" rx="1.8" fill="#fff" stroke="#1d1f24" stroke-width="0.55"/>
+            <text x="407" y="87" font-weight="700">ChirpStack</text>
+            <text x="407" y="97" font-size="6.9" fill="#4a4740">decrypt, decode to JSON</text>
+            <rect x="359" y="116" width="96" height="32" rx="1.8" fill="#fff" stroke="#880e12" stroke-width="1.1"/>
+            <text x="407" y="129" font-weight="700">Node-RED</text>
+            <text x="407" y="139" font-size="6.9" fill="#4a4740">task assignment, parsing</text>
+            <rect x="359" y="158" width="96" height="32" rx="1.8" fill="#fff" stroke="#1d1f24" stroke-width="0.55"/>
+            <text x="407" y="171" font-weight="700">InfluxDB</text>
+            <text x="407" y="181" font-size="6.9" fill="#4a4740">sensor_data, energy_data</text>
+            <rect x="359" y="200" width="96" height="32" rx="1.8" fill="#fff" stroke="#1d1f24" stroke-width="0.55"/>
+            <text x="407" y="213" font-weight="700">Grafana</text>
+            <text x="407" y="223" font-size="6.9" fill="#4a4740">dashboards</text>
+          </g>
+          <g stroke="#b5373d" stroke-width="1.1" marker-end="url(#at)">
+            <line x1="378" y1="64.5" x2="378" y2="73"/>
+            <line x1="378" y1="106.5" x2="378" y2="115"/>
+            <line x1="378" y1="148.5" x2="378" y2="157"/>
+            <line x1="378" y1="190.5" x2="378" y2="199"/>
+          </g>
+          <path d="M455.5 124 H459.5 V52 H457" fill="none" stroke="#3a6ea5" stroke-width="1.1" marker-end="url(#ab)"/>
+
+          <!-- user -->
+          <circle cx="500" cy="172" r="6.5" fill="none" stroke="#1d1f24" stroke-width="0.8"/>
+          <path d="M486.5 198 Q486.5 181.5 500 181.5 Q513.5 181.5 513.5 198" fill="none" stroke="#1d1f24" stroke-width="0.8"/>
+          <path d="M500 165 V140 H457" fill="none" stroke="#3a6ea5" stroke-width="1.1" marker-end="url(#ab)"/>
+          <text x="487" y="135.5" text-anchor="middle" font-size="6.9" fill="#4a4740">task request</text>
+          <path d="M455.5 220 H500 V201" fill="none" stroke="#b5373d" stroke-width="1.1" marker-end="url(#at)"/>
+          <text x="487" y="231" text-anchor="middle" font-size="6.9" fill="#4a4740">monitoring</text>
+          <text x="519" y="211" text-anchor="end" font-size="7.6" font-weight="700">User</text>
+        </svg>
+      </figure>
+    </section>
+
+    <div class="col c1">
+      <section>
+        <h2>III. Sensor Node</h2>
+        <figure>
+          <svg viewBox="0 0 256 236" role="img" aria-label="Sensor node: MP3-37 solar panel into an AEM10330 PMIC with a 5.5 V 60 F supercapacitor; 3V3 rail through a PPK2 header to the ATmega4809; SX1276 LoRa radio over SPI; MIC94069 load switch powering SHT41 and ENS160 on I2C.">
+            <defs>
+              <marker id="ak" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d1f24"/></marker>
+              <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2e7d5b"/></marker>
+              <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b8861b"/></marker>
+            </defs>
+            <g font-size="8" text-anchor="middle">
+              <!-- energy chain -->
+              <rect x="0.4" y="2" width="60" height="50" rx="2" fill="#eaf3ee" stroke="#2e7d5b" stroke-width="0.6"/>
+              <g transform="translate(18.4,7)"><rect width="24" height="12" rx="0.8" fill="#fff" stroke="#2e7d5b" stroke-width="0.5"/><path d="M6 0 V12 M12 0 V12 M18 0 V12 M0 6 H24" stroke="#2e7d5b" stroke-width="0.4"/></g>
+              <text x="30.4" y="32" font-weight="700">Solar panel</text>
+              <text x="30.4" y="43" font-size="7.5" fill="#4a4740">MP3-37</text>
+
+              <rect x="76" y="2" width="80" height="50" rx="2" fill="#eaf3ee" stroke="#2e7d5b" stroke-width="0.6"/>
+              <text x="116" y="17" font-weight="700">AEM10330</text>
+              <text x="116" y="28.5" font-size="7.5" fill="#4a4740">EH PMIC,</text>
+              <text x="116" y="38.5" font-size="7.5" fill="#4a4740">buck-boost DC-DC</text>
+
+              <rect x="172" y="2" width="83.6" height="50" rx="2" fill="#eaf3ee" stroke="#2e7d5b" stroke-width="0.6"/>
+              <text x="213.8" y="17" font-weight="700">Supercapacitor</text>
+              <text x="213.8" y="28.5" font-size="7.5" fill="#4a4740">5.5 V, 60 F</text>
+              <text x="213.8" y="38.5" font-size="7.5" fill="#4a4740">energy storage</text>
+
+              <line x1="61" y1="27" x2="75" y2="27" stroke="#2e7d5b" stroke-width="1" marker-end="url(#ag)"/>
+              <line x1="157" y1="27" x2="171" y2="27" stroke="#2e7d5b" stroke-width="1" marker-start="url(#ag)" marker-end="url(#ag)"/>
+
+              <!-- 3V3 path with PPK2 header -->
+              <line x1="116" y1="52.5" x2="116" y2="95" stroke="#2e7d5b" stroke-width="1" marker-end="url(#ag)"/>
+              <rect x="111" y="67" width="10" height="11" fill="#fff" stroke="#1d1f24" stroke-width="0.55"/>
+              <circle cx="116" cy="70.2" r="1.1" fill="#1d1f24"/><circle cx="116" cy="74.8" r="1.1" fill="#1d1f24"/>
+              <g text-anchor="start" font-size="7.4">
+                <text x="125" y="64">3V3_IN</text>
+                <text x="125" y="75.5" font-weight="700">PPK2 header</text>
+                <text x="125" y="87.5">3V3 rail</text>
+              </g>
+
+              <!-- MCU -->
+              <rect x="76" y="96" width="80" height="52" rx="2" fill="#f6e9ea" stroke="#880e12" stroke-width="1"/>
+              <text x="116" y="112" font-weight="700">ATmega4809</text>
+              <text x="116" y="123.5" font-size="7.5" fill="#4a4740">MCU: sensing,</text>
+              <text x="116" y="133.5" font-size="7.5" fill="#4a4740">scheduling, radio</text>
+
+              <!-- radio -->
+              <rect x="182" y="96" width="73.6" height="52" rx="2" fill="#eaf0f7" stroke="#3a6ea5" stroke-width="0.6"/>
+              <text x="218.8" y="112" font-weight="700">SX1276</text>
+              <text x="218.8" y="123.5" font-size="7.5" fill="#4a4740">LoRa, 868 MHz</text>
+              <text x="218.8" y="133.5" font-size="7.5" fill="#4a4740">U.FL antenna</text>
+              <path d="M242 96 V79 M235 74 L242 79 L249 74" stroke="#3a6ea5" stroke-width="0.85" fill="none"/>
+              <line x1="157" y1="122" x2="181" y2="122" stroke="#1d1f24" stroke-width="0.65" marker-start="url(#ak)" marker-end="url(#ak)"/>
+              <text x="169" y="116.5" font-size="7" fill="#4a4740">SPI</text>
+              <text x="169" y="132" font-size="7" fill="#4a4740">DIO0–2</text>
+
+              <!-- debug headers -->
+              <rect x="0.4" y="103" width="60" height="38" rx="2" fill="#fff" stroke="#77726a" stroke-width="0.55" stroke-dasharray="1.6 1.1"/>
+              <text x="30.4" y="118.5" font-weight="700" fill="#4a4740">UPDI, UART</text>
+              <text x="30.4" y="130" font-size="7.5" fill="#4a4740">debug headers</text>
+              <line x1="61" y1="122" x2="75" y2="122" stroke="#77726a" stroke-width="0.65"/>
+
+              <!-- sensing -->
+              <path d="M94 148.5 V166 H32.4 V183" stroke="#1d1f24" stroke-width="0.65" fill="none" marker-end="url(#ak)"/>
+              <text x="37" y="161.5" font-size="7" fill="#4a4740" text-anchor="start">MIC_ENA</text>
+              <rect x="0.4" y="184" width="64" height="50" rx="2" fill="#f7f0e1" stroke="#b8861b" stroke-width="0.6"/>
+              <text x="32.4" y="205" font-weight="700">MIC94069</text>
+              <text x="32.4" y="216" font-size="7.5" fill="#4a4740">load switch</text>
+
+              <line x1="65" y1="209" x2="99" y2="209" stroke="#b8861b" stroke-width="1" marker-end="url(#ao)"/>
+              <text x="82" y="204" font-size="6.8" fill="#4a4740">VCC_SENS</text>
+              <rect x="100" y="184" width="72" height="50" rx="2" fill="#f7f0e1" stroke="#b8861b" stroke-width="0.6"/>
+              <text x="136" y="205" font-weight="700">SHT41</text>
+              <text x="136" y="216" font-size="7.5" fill="#4a4740">temperature, RH</text>
+              <line x1="172" y1="209" x2="184" y2="209" stroke="#b8861b" stroke-width="1"/>
+              <rect x="184" y="184" width="71.6" height="50" rx="2" fill="#f7f0e1" stroke="#b8861b" stroke-width="0.6"/>
+              <text x="219.8" y="205" font-weight="700">ENS160</text>
+              <text x="219.8" y="216" font-size="7.5" fill="#4a4740">CO₂, TVOC</text>
+
+              <path d="M136 148.5 V183.5 M136 170 H219.8 V183.5" stroke="#1d1f24" stroke-width="0.65" fill="none"/>
+              <text x="178" y="166" font-size="7" fill="#4a4740">I²C</text>
+            </g>
+          </svg>
+        </figure>
+        <p>Three power domains: <b>3V3_IN</b> from the PMIC, joined to the core <b>3V3</b> rail through a header for the Nordic PPK2 power profiler, and <b>VCC_SENS</b>, which the load switch cuts during sleep to remove sensor quiescent draw.</p>
+      </section>
+
+      <section>
+        <h2>IV. Node Operation</h2>
+        <figure>
+          <svg viewBox="0 0 256 176" role="img" aria-label="Example schedule of four sensor nodes alternating sleep, receive, sense and transmit; harvesting runs continuously.">
+            <defs><marker id="ak2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#77726a"/></marker></defs>
+            <g font-size="7.4">
+              <rect x="24" y="0.5" width="10" height="7.5" rx="1.2" fill="#e6e2dc"/><text x="36.5" y="7">Sleep</text>
+              <rect x="62" y="0.5" width="10" height="7.5" rx="1.2" fill="#3a6ea5"/><text x="74.5" y="7">Rx</text>
+              <rect x="89" y="0.5" width="10" height="7.5" rx="1.2" fill="#b8861b"/><text x="101.5" y="7">Sense</text>
+              <rect x="129" y="0.5" width="10" height="7.5" rx="1.2" fill="#b5373d"/><text x="141.5" y="7">Tx</text>
+              <rect x="158" y="3.6" width="12" height="1.4" fill="#2e7d5b"/><text x="173" y="7">Harvesting, always on</text>
+            </g>
+            <g id="sched" font-size="7" text-anchor="middle"></g>
+            <g font-size="8" font-weight="700">
+              <text x="0" y="31.4">SN1</text><text x="0" y="69.4">SN2</text><text x="0" y="107.4">SN3</text><text x="0" y="145.4">SN4</text>
+            </g>
+            <line x1="24" y1="165" x2="254" y2="165" stroke="#77726a" stroke-width="0.55" marker-end="url(#ak2)"/>
+            <text x="254" y="174" text-anchor="end" font-size="7" fill="#4a4740">time</text>
+          </svg>
+        </figure>
+        <p>Harvesting charges the supercapacitor whatever the MCU state. A node sleeps, wakes periodically to listen for tasks, powers its sensors only while a task runs, and transmits readings with its energy status before sleeping again.</p>
+      </section>
+    </div>
+
+    <div class="col c2">
+      <section>
+        <h2>V. Task Assignment</h2>
+        <h3>A. MILP</h3>
+        <p>Each round, the VPS checks that the nodes’ stored energy <math><msub><mi>e</mi><mi>i</mi></msub></math> covers every submitted task <math><msub><mi>e</mi><mi>j</mi></msub></math> plus a reserve <math><msub><mi>e</mi><mi>s</mi></msub><mo>=</mo><msub><mi>e</mi><mtext>gas</mtext></msub><mo>+</mo><msub><mi>e</mi><mtext>temp</mtext></msub></math> kept for future immediate tasks:</p>
+        <div class="eq">
+          <math display="block"><mrow><munder><mo>∑</mo><mrow><mi>j</mi><mo>∈</mo><msub><mi>𝒯</mi><mtext>imm</mtext></msub><mo>∪</mo><msub><mi>𝒯</mi><mtext>non</mtext></msub></mrow></munder><msub><mi>e</mi><mi>j</mi></msub><mo>+</mo><msub><mi>e</mi><mi>s</mi></msub><mo>≤</mo><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>S</mi></munderover><msub><mi>e</mi><mi>i</mi></msub></mrow></math>
+          <span class="eqn">(1)</span>
+        </div>
+        <p>If (1) fails, only immediate tasks enter. The MILP then favours costly tasks on nodes with a high remaining-energy share <math><msub><mi>P</mi><mi>i</mi></msub></math>:</p>
+        <div class="eq">
+          <math display="block"><mrow><mo movablelimits="false">max</mo><mspace width="0.4em"/><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>S</mi></munderover><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>T</mi></munderover><msub><mi>x</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><msub><mi>e</mi><mi>j</mi></msub><msub><mi>P</mi><mi>i</mi></msub></mrow></math>
+          <span class="eqn">(2)</span>
+        </div>
+        <div class="st"><span class="lbl">s.t.</span>
+          <math display="block"><mrow><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>S</mi></munderover><msub><mi>x</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>≤</mo><mn>1</mn><mo>,</mo><mspace width="0.8em"/><mo>∀</mo><mi>j</mi></mrow></math>
+          <span class="eqn">(3)</span>
+        </div>
+        <div class="st"><span></span>
+          <math display="block"><mrow><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>T</mi></munderover><msub><mi>x</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><msub><mi>e</mi><mi>j</mi></msub><mo>≤</mo><msub><mi>e</mi><mi>i</mi></msub><mo>,</mo><mspace width="0.8em"/><mo>∀</mo><mi>i</mi></mrow></math>
+          <span class="eqn">(4)</span>
+        </div>
+        <p>with <math><msub><mi>x</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>∈</mo><mo stretchy="false">{</mo><mn>0</mn><mo>,</mo><mn>1</mn><mo stretchy="false">}</mo></math> set when task <math><mi>j</mi></math> goes to node <math><mi>i</mi></math>. Constraint (3) gives each task at most one node; (4) keeps each node within its stored energy.</p>
+
+        <h3>B. Heuristic</h3>
+        <p>Phase 1 places each immediate task on the highest-energy node that can afford it. Phase 2 packs non-immediate tasks onto fewer nodes to reduce communication overhead, while each node keeps a reserve <math><mi>θ</mi><mo>=</mo><msub><mi>e</mi><mtext>gas</mtext></msub><mo>+</mo><msub><mi>e</mi><mtext>temp</mtext></msub></math>.</p>
+        <div class="algo">
+          <div class="io"><b>Input:</b> nodes 𝒮, tasks 𝒯<sub>imm</sub>, 𝒯<sub>non</sub>, cost <span class="v">C</span>(<span class="v">t</span>), reserve <span class="v">θ</span></div>
+          <ol>
+            <li>sort 𝒯<sub>imm</sub>, 𝒯<sub>non</sub> by <span class="v">C</span>(<span class="v">t</span>), descending</li>
+            <li><b>for</b> <span class="v">t</span> ∈ 𝒯<sub>imm</sub> <b>do</b><span class="cm">Phase 1</span></li>
+            <li class="i1">sort 𝒮 by energy <span class="v">E</span>(<span class="v">s</span>), descending</li>
+            <li class="i1"><b>for</b> <span class="v">s</span> ∈ 𝒮 <b>do</b></li>
+            <li class="i2"><b>if</b> <span class="v">E</span>(<span class="v">s</span>) ≥ <span class="v">C</span>(<span class="v">t</span>) <b>then</b></li>
+            <li class="i3">assign(<span class="v">s</span>, <span class="v">t</span>); <span class="v">E</span>(<span class="v">s</span>) −= <span class="v">C</span>(<span class="v">t</span>); <b>break</b></li>
+            <li>sort 𝒮 by <span class="v">E</span>(<span class="v">s</span>), descending<span class="cm">Phase 2</span></li>
+            <li><b>for</b> <span class="v">s</span> ∈ 𝒮 <b>do</b></li>
+            <li class="i1"><b>for</b> <span class="v">t</span> ∈ 𝒯<sub>non</sub> <b>do</b></li>
+            <li class="i2"><b>if</b> <span class="v">E</span>(<span class="v">s</span>) − <span class="v">C</span>(<span class="v">t</span>) ≥ <span class="v">θ</span> <b>then</b></li>
+            <li class="i3">assign(<span class="v">s</span>, <span class="v">t</span>); <span class="v">E</span>(<span class="v">s</span>) −= <span class="v">C</span>(<span class="v">t</span>)</li>
+            <li><b>return</b> 𝒮 and the unassigned tasks</li>
+          </ol>
+        </div>
+        <p>Unassigned tasks can be reconsidered once nodes report newly harvested energy.</p>
+      </section>
+    </div>
+
+    <div class="col c3">
+      <section>
+        <h2>VI. Design Choices</h2>
+        <table class="choices">
+          <thead><tr><th>Part</th><th>Chosen</th><th>Over</th><th>Deciding figure</th></tr></thead>
+          <tbody>
+            <tr><td>MCU</td><td>ATmega4809</td><td>ESP32</td><td>0.1&nbsp;µA power-down&nbsp;[6] vs 10&nbsp;µA deep sleep, RAM lost&nbsp;[7]</td></tr>
+            <tr><td>PMIC</td><td>AEM10330</td><td>BQ25570</td><td>Cold start at 275&nbsp;mV, 3&nbsp;µW&nbsp;[8] vs 600&nbsp;mV&nbsp;[9]</td></tr>
+            <tr><td>Storage</td><td>Supercapacitor</td><td>Battery</td><td>Millions vs thousands of charge cycles&nbsp;[10]</td></tr>
+            <tr><td>Gas</td><td>ENS160</td><td>SGP30</td><td>29&nbsp;mA vs 48.8&nbsp;mA active&nbsp;[11],&nbsp;[12]</td></tr>
+            <tr><td>Radio</td><td>LoRaWAN</td><td>BLE, Zigbee</td><td>15&nbsp;km line of sight vs 60&nbsp;m and 75&nbsp;m per hop&nbsp;[13]</td></tr>
+          </tbody>
+        </table>
+        <h3>Standards</h3>
+        <p>LoRaWAN 1.0.4 Class A; ETSI EN 300 220-2 for 868&nbsp;MHz, as required by the UAE TDRA; MQTT 3.1.1; TLS 1.3 between gateway and VPS; RoHS 2011/65/EU; IPC-2221; IEEE C95.1; ISO/IEC 14882; ISO 9241-11.</p>
+      </section>
+
+      <section>
+        <h2>VII. Evaluation Plan</h2>
+        <table>
+          <thead><tr><th>Requirement</th><th class="num">Target</th></tr></thead>
+          <tbody>
+            <tr><td>Node to dashboard delay</td><td class="num">≤ 10 s</td></tr>
+            <tr><td>Data delivered, node to server</td><td class="num">≥ 95&nbsp;%</td></tr>
+            <tr><td>Average node power when idle</td><td class="num">&lt; 10 mW</td></tr>
+            <tr><td>Nodes served at once, no packet loss</td><td class="num">≥ 4</td></tr>
+            <tr><td>Server and dashboard uptime</td><td class="num">≥ 95&nbsp;%</td></tr>
+          </tbody>
+        </table>
+        <p>The PPK2 will profile each mode: sleep, wake, SHT41 and ENS160 reads, LoRa Tx and Rx. The network will be judged on packet delivery ratio and energy per transmission; the scheme on task completion rate, latency, task distribution and network lifetime. Safety: a node must not start a task its stored energy cannot cover.</p>
+      </section>
+
+      <section>
+        <h2>VIII. Toward Resilient Infrastructure</h2>
+        <ul>
+          <li>Grid-independent nodes and a single long-range gateway suit power- and cellular-limited sites: hazardous gases, temperature and humidity at remote wastewater plants, or humidity and CO<sub>2</sub> in greenhouses.</li>
+          <li>Fewer battery replacements at hard-to-reach or hazardous sites lower maintenance cost, keep workers safer and cut battery waste.</li>
+          <li>Supports sustainable-city development such as Sharjah Sustainable City.</li>
+        </ul>
+      </section>
+    </div>
+
+    <section class="foot">
+      <h2>References</h2>
+      <div class="refs">
+        <ol>
+          <li>C. Delgado, J. M. Sanz, C. Blondia, J. Famaey, “Batteryless LoRaWAN communications using energy harvesting: Modeling and characterization,” <i>IEEE Internet Things J.</i>, vol. 8, no. 4, 2021.</li>
+          <li>K. Malek <i>et al.</i>, “Design and implementation of sustainable solar energy harvesting for low-cost remote sensors equipped with real-time monitoring systems,” <i>J. Infrastruct. Intell. Resil.</i>, vol. 2, no. 3, 2023.</li>
+          <li>L. Zhang, K.-W. Chin, M. Ros, “On virtualizing targets coverage in energy harvesting IoT systems,” <i>IEEE Internet Things J.</i>, vol. 11, no. 2, 2024.</li>
+          <li>Y. Cui, K.-W. Chin, S. Soh, M. Ros, “Novel task scheduling approaches in energy sharing solar-powered IoT networks,” <i>IEEE Internet Things J.</i>, vol. 10, no. 12, 2023.</li>
+          <li>V. Maleki Raee, A. Ebrahimzadeh, R. H. Glitho, H. Elbiaze, “Ensuring energy efficiency when dynamically assigning tasks in virtualized wireless sensor networks,” <i>IEEE Trans. Green Commun. Netw.</i>, vol. 6, no. 1, 2022.</li>
+          <li>Microchip, <i>ATmega4808/4809 Data Sheet</i>, DS40002173C, 2021.</li>
+          <li>Espressif, <i>ESP32 Series Datasheet</i>, 2025.</li>
+          <li>e-peas, <i>AEM10330 Datasheet</i>, 2024.</li>
+          <li>Texas Instruments, <i>BQ25570 Nano Power Boost Charger and Buck Converter for Energy Harvester Powered Applications</i>, 2019.</li>
+          <li>U. Tiwari, “What is the difference between supercapacitors and batteries?” 2024.</li>
+          <li>ScioSense, <i>ENS160 Digital Metal-Oxide Multi-Gas Sensor Datasheet</i>, 2023.</li>
+          <li>Sensirion, <i>SGP30 Indoor Air Quality Sensor Datasheet</i>, 2020.</li>
+          <li>S. Sadowski, P. Spachos, “RSSI-based indoor localization with the Internet of Things,” <i>IEEE Access</i>, vol. 6, 2018.</li>
+        </ol>
+      </div>
+      <p class="ack">We thank Dr. Zaid Haymoor for guidance on the hardware implementation.</p>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (n, a, txt) => { const e = document.createElementNS(ns, n); for (const k in a) e.setAttribute(k, a[k]); if (txt) e.textContent = txt; return e; };
+
+  // System model: four nodes, the sensor serving each node's current task is filled
+  const nodes = [["SN1", "temperature task", 0], ["SN2", "humidity task", 0], ["SN3", "CO₂ task", 1], ["SN4", "CO₂ task", 1]];
+  const ng = document.getElementById("nodes");
+  nodes.forEach(([name, task, active], i) => {
+    const g = el("g", { transform: `translate(0,${22 + i * 61})` });
+    g.append(el("rect", { x: 0.4, y: 0, width: 159, height: 52, rx: 2.5, fill: "#fff", stroke: "#1d1f24", "stroke-width": 0.6 }));
+    g.append(el("text", { x: 6, y: 12.5, "font-size": 8, "font-weight": 700 }, name));
+    g.append(el("text", { x: 28, y: 12.5, "font-size": 7.2, fill: "#7a5806", "font-style": "italic" }, task));
+    g.append(el("use", { href: "#pv", x: 131, y: 4 }));
+    [["SHT41", "T / RH"], ["ENS160", "CO₂ / TVOC"]].forEach(([chip, sub], k) => {
+      const on = k === active, x = 6 + k * 77;
+      g.append(el("use", { href: on ? "#chipOn" : "#chipOff", x, y: 19 }));
+      g.append(el("text", { x: x + 35.5, y: 30.8, "text-anchor": "middle", "font-size": 7.8, "font-weight": 700, fill: on ? "#1d1f24" : "#77726a" }, chip));
+      g.append(el("text", { x: x + 35.5, y: 41, "text-anchor": "middle", "font-size": 7, fill: on ? "#1d1f24" : "#77726a" }, sub));
+    });
+    ng.append(g);
+  });
+
+  // Node schedule, units 0–100 along the time axis
+  const rows = [
+    [["s",0,26],["r",26,31],["x",31,42,"Temp"],["t",42,47],["s",47,80],["r",80,85],["s",85,100]],
+    [["r",0,5],["x",5,20,"Humidity"],["t",20,25],["s",25,50],["r",50,55],["x",55,66,"TVOC"],["t",66,71],["s",71,100]],
+    [["s",0,24],["r",24,29],["s",29,63],["r",63,68],["x",68,78,"CO₂"],["t",78,83],["s",83,100]],
+    [["r",0,5],["x",5,15,"CO₂"],["t",15,20],["s",20,50],["r",50,55],["x",55,65,"Temp"],["t",65,70],["s",70,100]],
+  ];
+  const fill = { s: "#e6e2dc", r: "#3a6ea5", x: "#b8861b", t: "#b5373d" };
+  const ink = { s: "#5f5a53", r: "#ffffff", x: "#1d1f24", t: "#ffffff" };
+  const word = { s: "Sleep", r: "Rx", t: "Tx" };
+  const x0 = 24, span = 230, sg = document.getElementById("sched");
+  rows.forEach((segs, i) => {
+    const y = 14 + i * 38;
+    segs.forEach(([k, a, b, label]) => {
+      const x = x0 + a / 100 * span + 0.5, w = (b - a) / 100 * span - 1;
+      sg.append(el("rect", { x, y, width: w, height: 29, rx: 1.6, fill: fill[k] }));
+      sg.append(el("text", { x: x + w / 2, y: y + 17.1, fill: ink[k], "font-weight": k === "s" ? 400 : 700 }, label || word[k]));
+    });
+    sg.append(el("rect", { x: x0 + 0.5, y: y + 30.6, width: span - 1, height: 1.4, fill: "#2e7d5b" }));
+  });
+
+  // The diagram font subset has no U+2082, so set the 2 of CO₂ as a subscript
+  document.querySelectorAll("svg text").forEach(t => {
+    if (t.children.length || !t.textContent.includes("₂")) return;
+    const [a, b] = t.textContent.split("₂");
+    t.textContent = a;
+    t.append(el("tspan", { "baseline-shift": "-0.26em", "font-size": "0.75em" }, "2"));
+    if (b) t.append(document.createTextNode(b));
+  });
+</script>
+</body>
+</html>
