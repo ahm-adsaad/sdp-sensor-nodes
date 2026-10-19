@@ -13,7 +13,8 @@
 //   #define LMIC_ENABLE_arbitrary_clock_error 1
 //   #define DISABLE_PING
 //   #define DISABLE_BEACONS
-// Compile-tested 2026-10-19 with MegaCoreX 1.2.0 and the versions above; not yet run on a board.
+// Compile-tested 2026-10-19 with MegaCoreX 1.2.0 and the versions above. First run on a rev-2
+// board from storage: brown-out reset on every join at LMIC's 16 dBm, hence TX_POWER_DBM.
 // The OTAA keys are in secrets.h next to this file, which is kept out of git.
 #include <Wire.h>
 #include <lmic.h>
@@ -90,6 +91,15 @@ static osjob_t sendjob;
 // LMIC past the 1 % duty cycle; at most 1800 s so LMIC still notices micros() wrapping.
 const uint16_t TX_INTERVAL = 60;
 static_assert(TX_INTERVAL >= 10 && TX_INTERVAL <= 1800, "TX_INTERVAL must be 10..1800 s");
+
+// Transmit power cap (dBm) for every frame, joins included. On rev 2 the whole 3.3 V rail is the
+// AEM10330's LOAD output, which gives about 60 mA with the storage at 2.8-3.0 V (DS v1.5.0
+// Table 6, Fig. 7). LMIC sends joins at 16 dBm on PA_BOOST, and the SX1276 draws 87 mA at 17 dBm,
+// so the rail sagged and the chip brown-out reset on every JoinRequest (reset flags 0x02).
+// 10 dBm is a starting point, not a measured limit: check the TX current with the PPK2 before
+// raising it. LMIC accepts 2..17 on PA_BOOST.
+const int8_t TX_POWER_DBM = 10;
+static_assert(TX_POWER_DBM >= 2 && TX_POWER_DBM <= 17, "TX_POWER_DBM must be 2..17 dBm");
 
 const uint8_t DOWNLINK_PORT = 10;
 const uint8_t CMD_HUMIDITY = 0x01;
@@ -319,8 +329,15 @@ void onEvent(ev_t ev)
       // ADR off + fixed SF7 (DR5): no ADR downlinks from ChirpStack, short uplinks.
       // Uplink channels are limited to 868.1/868.3/868.5 by ChirpStack (no CFList).
       LMIC_setAdrMode(0);
-      LMIC_setDrTxpow(DR_SF7, 14);
+      LMIC_setDrTxpow(DR_SF7, TX_POWER_DBM);
       do_send(&sendjob);
+      break;
+
+    case EV_TXSTART:
+      // LMIC has just picked this frame's power (16 dBm for a join) and starts the radio right
+      // after this event returns, so this is the last place to cap it
+      if (LMIC.radio.txpow > TX_POWER_DBM)
+        LMIC.radio.txpow = TX_POWER_DBM;
       break;
 
     case EV_JOIN_FAILED:
