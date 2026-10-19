@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-19T00:00:00Z",
+  "title": "Design System: Virtualized Energy Harvesting IoT",
+  "extensions": {
+    "colorMeta": {
+      "maroon": { "role": "primary", "displayName": "AUS Maroon", "canonical": "oklch(40.1% 0.154 26.8)", "tonalRamp": ["#350000", "#5b0000", "#80000a", "#a7322d", "#ce574e", "#f67a6f", "#ff9f92", "#ffcfc3"] },
+      "maroon-tint": { "role": "primary", "displayName": "Maroon Wash", "canonical": "#f6e9ea", "tonalRamp": ["#350000", "#5b0000", "#80000a", "#a7322d", "#ce574e", "#f67a6f", "#ff9f92", "#ffcfc3"] },
+      "on-maroon-soft": { "role": "primary", "displayName": "Blush on Maroon", "canonical": "#f3dfe0", "tonalRamp": ["#350000", "#5b0000", "#80000a", "#a7322d", "#ce574e", "#f67a6f", "#ff9f92", "#ffcfc3"] },
+      "ink": { "role": "neutral", "displayName": "Proof Ink", "canonical": "oklch(23.9% 0.010 268.3)", "tonalRamp": ["#090b0f", "#23252a", "#404247", "#5f6167", "#808289", "#a2a5ac", "#c6c9d0", "#ebeef5"] },
+      "ink-secondary": { "role": "neutral", "displayName": "Warm Graphite", "canonical": "oklch(39.9% 0.012 87.5)", "tonalRamp": ["#0d0b06", "#28251e", "#45423b", "#64615a", "#85827a", "#a8a59d", "#ccc9c0", "#f2eee5"] },
+      "ink-muted": { "role": "neutral", "displayName": "Faded Graphite", "canonical": "oklch(55.4% 0.014 79.7)", "tonalRamp": ["#0e0b05", "#29241e", "#46413a", "#656059", "#878279", "#aaa49c", "#cec8bf", "#f3eee5"] },
+      "hairline": { "role": "neutral", "displayName": "Rule Sand", "canonical": "oklch(86.9% 0.013 75.4)", "tonalRamp": ["#0e0a06", "#29241e", "#46413b", "#666059", "#87817a", "#aaa49c", "#cec8c0", "#f4ede5"] },
+      "paper": { "role": "neutral", "displayName": "Print White", "canonical": "oklch(100% 0 0)", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
+      "data-rx": { "role": "secondary", "displayName": "Signal Blue", "canonical": "oklch(52.8% 0.104 251.5)", "tonalRamp": ["#000434", "#002455", "#0a4377", "#30649a", "#5186be", "#73a9e4", "#97ceff", "#bbf4ff"] },
+      "data-rx-tint": { "role": "secondary", "displayName": "Radio Wash", "canonical": "#eaf0f7", "tonalRamp": ["#000434", "#002455", "#0a4377", "#30649a", "#5186be", "#73a9e4", "#97ceff", "#bbf4ff"] },
+      "data-sense": { "role": "secondary", "displayName": "Sensing Ochre", "canonical": "oklch(65.3% 0.128 80.4)", "tonalRamp": ["#230000", "#431600", "#643600", "#865600", "#aa7800", "#ce9b39", "#f4c061", "#ffe68e"] },
+      "data-sense-tint": { "role": "secondary", "displayName": "Sensing Wash", "canonical": "#f7f0e1", "tonalRamp": ["#230000", "#431600", "#643600", "#865600", "#aa7800", "#ce9b39", "#f4c061", "#ffe68e"] },
+      "data-sense-deep": { "role": "secondary", "displayName": "Deep Ochre", "canonical": "#7a5806", "tonalRamp": ["#230000", "#431600", "#643600", "#865600", "#aa7800", "#ce9b39", "#f4c061", "#ffe68e"] },
+      "data-tx": { "role": "secondary", "displayName": "Brick", "canonical": "oklch(52.5% 0.162 22.2)", "tonalRamp": ["#370000", "#5d0000", "#830014", "#aa2c34", "#d25254", "#fa7676", "#ff9b98", "#ffceca"] },
+      "data-sleep": { "role": "secondary", "displayName": "Sleep Stone", "canonical": "oklch(91.4% 0.009 78.3)", "tonalRamp": ["#0d0b07", "#282520", "#45413d", "#64615b", "#85827c", "#a8a49f", "#ccc8c3", "#f2eee8"] },
+      "data-sleep-ink": { "role": "secondary", "displayName": "Sleep Ink", "canonical": "#5f5a53", "tonalRamp": ["#0d0b07", "#282520", "#45413d", "#64615b", "#85827c", "#a8a49f", "#ccc8c3", "#f2eee8"] },
+      "energy": { "role": "secondary", "displayName": "Harvest Green", "canonical": "oklch(53.1% 0.095 161.9)", "tonalRamp": ["#001501", "#003216", "#005132", "#207250", "#479471", "#6bb893", "#8fddb6", "#b4ffdb"] },
+      "energy-tint": { "role": "secondary", "displayName": "Harvest Wash", "canonical": "#eaf3ee", "tonalRamp": ["#001501", "#003216", "#005132", "#207250", "#479471", "#6bb893", "#8fddb6", "#b4ffdb"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Poster title in the maroon band only." },
+      "byline": { "displayName": "Byline", "purpose": "Author names in the band." },
+      "affiliation": { "displayName": "Affiliation", "purpose": "Advisor and department in the band, in Blush on Maroon." },
+      "headline": { "displayName": "Section Head", "purpose": "Roman-numbered small-caps section heads in maroon over a 1.3 mm maroon rule." },
+      "title": { "displayName": "Subsection Head", "purpose": "Italic lettered subsections (A. MILP) and unnumbered sub-heads." },
+      "body": { "displayName": "Body", "purpose": "Justified, hyphenated prose and lists with lining numerals." },
+      "algorithm": { "displayName": "Algorithm", "purpose": "algorithm2e-style pseudocode block." },
+      "table": { "displayName": "Table", "purpose": "Booktabs table body; 23.5pt for the opening gap table." },
+      "table-head": { "displayName": "Table Head", "purpose": "Small-caps 600-weight column heads." },
+      "reference": { "displayName": "Reference", "purpose": "Three-column numbered reference list." },
+      "math": { "displayName": "Math", "purpose": "Inline MathML; display equations at 1.12em." },
+      "label": { "displayName": "Diagram Label", "purpose": "Source Sans 3 inside SVG figures only, 7 to 8 viewBox units (about 20 to 23pt at A0)." }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      { "name": "page-a0-portrait", "value": "841mm x 1189mm (fixed, @page margin 0)" }
+    ],
+    "rules": [
+      { "name": "section-rule", "value": "1.3mm solid #880e12", "purpose": "Under every section head." },
+      { "name": "booktabs-top-bottom", "value": "0.75mm solid #1d1f24", "purpose": "Table and algorithm outer rules." },
+      { "name": "booktabs-mid", "value": "0.4mm solid #1d1f24", "purpose": "Under table heads and the algorithm Input line." },
+      { "name": "row-hairline", "value": "0.2mm solid #d9d3cb", "purpose": "Between table body rows." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Title Band",
+      "kind": "custom",
+      "refersTo": "title-band",
+      "description": "Full-width maroon band with the AUS seal on a white disc, bold title, authors and affiliation.",
+      "html": "<header class=\"ds-band\"><div class=\"ds-seal\"></div><div><h1 class=\"ds-band-title\">A Practical Implementation of a Virtualized Energy Harvesting IoT</h1><p class=\"ds-band-authors\">Ahmad Saad, Abdulrahman Hanifa, Mohammad Alatrash, Abdalrahman Al-Zaharna</p><p class=\"ds-band-affil\"><b>Advisor:</b> Dr. Anastassia Gharib</p></div></header>",
+      "css": ".ds-band { background: #880e12; color: #fff; padding: 19px 26px 18px 24px; display: grid; grid-template-columns: 96px 1fr; column-gap: 20px; align-items: center; font-family: 'STIX Two Text', 'Times New Roman', serif; } .ds-seal { width: 96px; height: 96px; border-radius: 50%; background: #fff; } .ds-band-title { margin: 0 0 6px; font-weight: 700; font-size: 30px; line-height: 1.04; letter-spacing: -0.012em; text-wrap: balance; } .ds-band-authors { margin: 0 0 3px; font-size: 15px; line-height: 1.2; } .ds-band-affil { margin: 0; font-size: 12px; color: #f3dfe0; } .ds-band-affil b { font-weight: 600; color: #fff; }"
+    },
+    {
+      "name": "Section Heading",
+      "kind": "custom",
+      "refersTo": "section-heading",
+      "description": "Roman-numbered small-caps head in maroon over a heavy maroon rule.",
+      "html": "<section class=\"ds-section\"><h2 class=\"ds-h2\">I. Motivation</h2><h3 class=\"ds-h3\">A. MILP</h3><p class=\"ds-p\">Battery-powered sensor nodes need periodic battery replacement, which hinders scalable long-term operation [1].</p></section>",
+      "css": ".ds-section { font-family: 'STIX Two Text', 'Times New Roman', serif; color: #1d1f24; } .ds-h2 { margin: 0 0 8px; padding-bottom: 4px; font-size: 22px; line-height: 1.1; font-weight: 700; font-variant-caps: small-caps; letter-spacing: 0.02em; color: #880e12; border-bottom: 3px solid #880e12; } .ds-h3 { margin: 0 0 4px; font-size: 18px; font-weight: 400; font-style: italic; } .ds-p { margin: 0; font-size: 16px; line-height: 1.3; text-align: justify; hyphens: auto; font-variant-numeric: lining-nums; } .ds-p::selection { background: #880e12; color: #fff; }"
+    },
+    {
+      "name": "Booktabs Table",
+      "kind": "card",
+      "refersTo": "booktabs-table",
+      "description": "Rules-only table: heavy top and bottom, mid rule under the head, hairlines between rows, own row in bold.",
+      "html": "<table class=\"ds-tab\"><thead><tr><th>Requirement</th><th class=\"ds-num\">Target</th></tr></thead><tbody><tr><td>Node to dashboard delay</td><td class=\"ds-num\">&le; 10 s</td></tr><tr><td>Data delivered, node to server</td><td class=\"ds-num\">&ge; 95 %</td></tr><tr class=\"ds-ours\"><td>Ours</td><td class=\"ds-num\">&ge; 4</td></tr></tbody></table>",
+      "css": ".ds-tab { width: 100%; border-collapse: collapse; font-family: 'STIX Two Text', 'Times New Roman', serif; font-size: 14px; line-height: 1.22; color: #1d1f24; } .ds-tab thead th { text-align: left; font-weight: 600; font-variant-caps: small-caps; letter-spacing: 0.02em; border-top: 2px solid #1d1f24; border-bottom: 1px solid #1d1f24; padding: 4px 6px 3px; } .ds-tab tbody td { padding: 4px 6px; vertical-align: top; } .ds-tab tbody tr + tr td { border-top: 0.5px solid #d9d3cb; } .ds-tab tbody tr:last-child td { border-bottom: 2px solid #1d1f24; } .ds-tab td:first-child, .ds-tab th:first-child { padding-left: 0; } .ds-tab td:last-child, .ds-tab th:last-child { padding-right: 0; } .ds-tab .ds-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums lining-nums; } .ds-tab .ds-ours td { font-weight: 700; }"
+    },
+    {
+      "name": "Algorithm Block",
+      "kind": "custom",
+      "refersTo": "algorithm-block",
+      "description": "algorithm2e ruled block with numbered lines, indentation steps and right-floated comments.",
+      "html": "<div class=\"ds-algo\"><div class=\"ds-io\"><b>Input:</b> nodes S, tasks T, reserve <i>&theta;</i></div><ol><li><b>for</b> <i>t</i> &isin; T <b>do</b><span class=\"ds-cm\">Phase 1</span></li><li class=\"ds-i1\">sort S by energy <i>E</i>(<i>s</i>), descending</li><li class=\"ds-i2\"><b>if</b> <i>E</i>(<i>s</i>) &ge; <i>C</i>(<i>t</i>) <b>then</b></li><li><b>return</b> S</li></ol></div>",
+      "css": ".ds-algo { font-family: 'STIX Two Text', 'Times New Roman', serif; color: #1d1f24; border-top: 2px solid #1d1f24; border-bottom: 2px solid #1d1f24; padding: 5px 0 6px; font-size: 14px; line-height: 1.55; } .ds-io { padding-bottom: 4px; border-bottom: 1px solid #1d1f24; margin-bottom: 4px; } .ds-algo ol { list-style: none; margin: 0; padding: 0; counter-reset: ln; } .ds-algo li { counter-increment: ln; position: relative; padding-left: 26px; } .ds-algo li::before { content: counter(ln); position: absolute; left: 0; width: 14px; text-align: right; font-size: 11px; color: #4a4740; } .ds-algo .ds-i1 { padding-left: 42px; } .ds-algo .ds-i2 { padding-left: 58px; } .ds-cm { float: right; color: #4a4740; font-style: italic; } .ds-cm::before { content: '\\25B7\\2009'; font-style: normal; }"
+    },
+    {
+      "name": "Numbered Equation",
+      "kind": "custom",
+      "refersTo": "body",
+      "description": "Display equation centred in the column with its number right-aligned.",
+      "html": "<div class=\"ds-eq\"><math display=\"block\"><mrow><msub><mi>e</mi><mi>j</mi></msub><mo>+</mo><msub><mi>e</mi><mi>s</mi></msub><mo>&le;</mo><msub><mi>e</mi><mi>i</mi></msub></mrow></math><span class=\"ds-eqn\">(1)</span></div>",
+      "css": ".ds-eq { display: grid; grid-template-columns: 1fr auto; align-items: center; margin: 10px 0 12px; font-family: 'STIX Two Text', 'Times New Roman', serif; color: #1d1f24; font-size: 16px; } .ds-eq math { justify-self: center; font-family: 'STIX Two Math', 'STIX Two Text', serif; font-size: 1.12em; } .ds-eqn { font-size: 15px; }"
+    },
+    {
+      "name": "Diagram Boxes",
+      "kind": "card",
+      "refersTo": "diagram-box",
+      "description": "SVG subsystem boxes tinted by role, Source Sans 3 labels, fill set per element by attribute.",
+      "html": "<svg class=\"ds-diag\" viewBox=\"0 0 256 56\" role=\"img\" aria-label=\"Energy, MCU, radio and sensor boxes\"><g font-size=\"8\" text-anchor=\"middle\"><rect x=\"0.4\" y=\"2\" width=\"60\" height=\"50\" rx=\"2\" fill=\"#eaf3ee\" stroke=\"#2e7d5b\" stroke-width=\"0.6\"/><text x=\"30.4\" y=\"25\" font-weight=\"700\">AEM10330</text><text x=\"30.4\" y=\"36\" font-size=\"7.5\" fill=\"#4a4740\">EH PMIC</text><rect x=\"64.4\" y=\"2\" width=\"60\" height=\"50\" rx=\"2\" fill=\"#f6e9ea\" stroke=\"#880e12\" stroke-width=\"1\"/><text x=\"94.4\" y=\"25\" font-weight=\"700\">ATmega4809</text><text x=\"94.4\" y=\"36\" font-size=\"7.5\" fill=\"#4a4740\">MCU</text><rect x=\"128.4\" y=\"2\" width=\"60\" height=\"50\" rx=\"2\" fill=\"#eaf0f7\" stroke=\"#3a6ea5\" stroke-width=\"0.6\"/><text x=\"158.4\" y=\"25\" font-weight=\"700\">SX1276</text><text x=\"158.4\" y=\"36\" font-size=\"7.5\" fill=\"#4a4740\">LoRa radio</text><rect x=\"192.4\" y=\"2\" width=\"60\" height=\"50\" rx=\"2\" fill=\"#f7f0e1\" stroke=\"#b8861b\" stroke-width=\"0.6\"/><text x=\"222.4\" y=\"25\" font-weight=\"700\">SHT41</text><text x=\"222.4\" y=\"36\" font-size=\"7.5\" fill=\"#4a4740\">temperature, RH</text></g></svg>",
+      "css": ".ds-diag { display: block; width: 100%; height: auto; fill: #1d1f24; } .ds-diag text { font-family: 'Source Sans 3', 'STIX Two Text', sans-serif; }"
+    },
+    {
+      "name": "Schedule Strip",
+      "kind": "custom",
+      "refersTo": "diagram-box",
+      "description": "Per-node activity row in the data palette with the always-on harvesting line beneath.",
+      "html": "<svg class=\"ds-diag\" viewBox=\"0 0 230 34\" role=\"img\" aria-label=\"Sleep, receive, sense, transmit, sleep\"><g font-size=\"7\" text-anchor=\"middle\"><rect x=\"0.5\" y=\"0\" width=\"59\" height=\"29\" rx=\"1.6\" fill=\"#e6e2dc\"/><text x=\"30\" y=\"17.1\" fill=\"#5f5a53\">Sleep</text><rect x=\"60.5\" y=\"0\" width=\"20\" height=\"29\" rx=\"1.6\" fill=\"#3a6ea5\"/><text x=\"70.5\" y=\"17.1\" fill=\"#ffffff\" font-weight=\"700\">Rx</text><rect x=\"81.5\" y=\"0\" width=\"40\" height=\"29\" rx=\"1.6\" fill=\"#b8861b\"/><text x=\"101.5\" y=\"17.1\" fill=\"#1d1f24\" font-weight=\"700\">Temp</text><rect x=\"122.5\" y=\"0\" width=\"20\" height=\"29\" rx=\"1.6\" fill=\"#b5373d\"/><text x=\"132.5\" y=\"17.1\" fill=\"#ffffff\" font-weight=\"700\">Tx</text><rect x=\"143.5\" y=\"0\" width=\"86\" height=\"29\" rx=\"1.6\" fill=\"#e6e2dc\"/><text x=\"186.5\" y=\"17.1\" fill=\"#5f5a53\">Sleep</text></g><rect x=\"0.5\" y=\"30.6\" width=\"229\" height=\"1.4\" fill=\"#2e7d5b\"/></svg>",
+      "css": ".ds-diag { display: block; width: 100%; height: auto; fill: #1d1f24; } .ds-diag text { font-family: 'Source Sans 3', 'STIX Two Text', sans-serif; }"
+    },
+    {
+      "name": "Reference List",
+      "kind": "custom",
+      "refersTo": "reference-list",
+      "description": "IEEE-style numbered references with hanging bracketed numbers.",
+      "html": "<div class=\"ds-refs\"><ol><li>C. Delgado <i>et al.</i>, “Batteryless LoRaWAN communications using energy harvesting,” <i>IEEE Internet Things J.</i>, vol. 8, no. 4, 2021.</li><li>Microchip, <i>ATmega4808/4809 Data Sheet</i>, 2021.</li></ol></div>",
+      "css": ".ds-refs { font-family: 'STIX Two Text', 'Times New Roman', serif; font-size: 11px; line-height: 1.26; color: #1d1f24; } .ds-refs ol { margin: 0; padding: 0; list-style: none; counter-reset: rf; } .ds-refs li { counter-increment: rf; position: relative; padding-left: 24px; margin: 0 0 3px; } .ds-refs li::before { content: '[' counter(rf) ']'; position: absolute; left: 0; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Proceedings Page, Enlarged",
+    "overview": "The system is an IEEE conference page scaled to A0 and played straight. Authority comes from the conventions engineering readers already trust: Roman-numeral section heads in small caps, booktabs tables, numbered display equations, an algorithm2e-style ruled block, and bracketed numbered references. Nothing is dressed up; precision of setting is the only ornament. The page is dense by poster standards because judges read it twice, first at 1 to 2 m for the title band and the diagrams, then up close for the mechanism.\n\nColour is rationed. AUS maroon owns the title band and the section rules and appears nowhere as decoration. A small, validated data palette (receive, sense, transmit, sleep, harvested energy) carries every diagram and is never used for prose. The ground is white print paper and the ink is a near-black with a warm secondary grey.\n\nThe world refuses the infographic-poster default: no icon tiles, no stat blocks, no gradient banners, no captions or subtitles, and no number presented as a measured result when the report of record has none.",
+    "keyCharacteristics": [
+      "White print ground, near-black ink, one institutional accent (AUS maroon).",
+      "One serif family (STIX Two Text) for all text, its math sibling for equations, a humanist sans only inside diagrams.",
+      "Typeset academic devices: small-caps numbered sections, booktabs rules, numbered equations, ruled algorithm, numbered references.",
+      "Diagrams are the figures; they carry no captions.",
+      "Flat throughout: depth only from rules, tints and the maroon band."
+    ],
+    "rules": [
+      { "name": "The Maroon Is Structure Rule", "body": "Maroon marks the band, section heads, their rules and list markers. It never colours a word in a paragraph or a table cell.", "section": "colors" },
+      { "name": "The Data Colours Mean Data Rule", "body": "Blue is always receive or task flow, ochre always sensing, brick always transmit or data uplink, green always harvested energy, stone always sleep. A colour keeps its meaning in every diagram; it is never reused decoratively.", "section": "colors" },
+      { "name": "The Legible Fill Rule", "body": "Text on a solid data fill follows the validated pairing: white on blue and brick, ink on ochre, Sleep Ink on stone.", "section": "colors" },
+      { "name": "The One Serif Rule", "body": "Every word outside a diagram is STIX Two Text or STIX Two Math. Sans appears only inside SVG figures.", "section": "typography" },
+      { "name": "The Small-Caps Head Rule", "body": "Section and table heads use true small caps (`font-variant-caps: small-caps`) with 0.02em tracking, never uppercase transforms.", "section": "typography" },
+      { "name": "The Column Grid Rule", "body": "Every block aligns to the three-column, 16 mm-gutter grid; a figure may span columns but never breaks the margin.", "section": "layout" },
+      { "name": "The Ink-Only Rule", "body": "If a hierarchy cannot be expressed with rule weight, tint or type, it does not get a shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "**Do** number sections with Roman numerals and subsections with letters, as an IEEE paper does.",
+      "**Do** keep every data colour bound to its meaning (blue Rx/task, ochre sense, brick Tx/data, stone sleep, green harvest) in every new figure.",
+      "**Do** set SVG text colour with `fill` presentation attributes on the element; inherit a default from `svg { fill: var(--ink) }` only.",
+      "**Do** set CO<sub>2</sub> in diagrams with a subscript tspan (`baseline-shift: -0.26em`, 0.75em); the diagram font subset has no U+2082, so a script pass converts the character.",
+      "**Do** keep diagram labels between 7 and 8 viewBox units at the A0 scale, so they print at about 20 to 23pt.",
+      "**Do** cite with bracketed numbers that resolve to the reference list."
+    ],
+    "donts": [
+      "**Don't** write a CSS rule like `svg text { fill: ... }`; it overrides the per-element fill attributes and flattens the data colours.",
+      "**Don't** add figure captions, subtitles or filler text; the section head and the figure carry the meaning.",
+      "**Don't** present any number as a measured result when the report of record has none; targets go in a requirements table labelled as targets.",
+      "**Don't** use icon tiles, stat blocks, gradient banners or shadows.",
+      "**Don't** introduce a second display face or set prose in Source Sans 3.",
+      "**Don't** use maroon or the data colours to highlight words in prose."
+    ]
+  }
+}

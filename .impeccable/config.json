@@ -20,6 +20,15 @@
         ],
         "createdAt": "2026-09-16T05:07:07.712Z",
         "reason": "Claude triage: same token palette as the enclosure viewer, all pairs computed at or above 4.87:1 in both themes (graphite on ground 4.87, on sheet 5.38, dark 6.56; accent pairs 6.77 and 5.75); no disabled controls on this page"
+      },
+      {
+        "rule": "oversized-h1",
+        "value": "*",
+        "files": [
+          "poster/poster.html"
+        ],
+        "createdAt": "2026-10-19T06:46:34.780Z",
+        "reason": "Claude and the finish reviewer: 86 pt two-line title on an A0 print poster read at 1-2 m; the screen-viewport rule does not apply"
       }
     ]
   }
