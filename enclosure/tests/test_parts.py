@@ -201,3 +201,14 @@ def test_panel_sits_in_the_rim_window(wedge):
     assert overlap(panel, wedge) < 1e-3
     assert panel.bounding_box().size.X == pytest.approx(p.PV_L, abs=0.01)
     assert panel.bounding_box().min.Z > p.LID_Z1 + p.FRONT_LIFT
+
+
+def test_wedge_screws_are_reachable_from_above(wedge):
+    for bx, by in p.BOSS_XY:
+        for dz in (6.0, 12.0, 20.0, 30.0, 45.0):
+            assert not wedge.is_inside(Vector(bx, by, p.LID_Z1 + dz)), (bx, by, dz)
+
+
+def test_lid_boss_holes_go_through_for_an_m3x12(lid):
+    for x, y in p.BOSS_XY:
+        assert not lid.is_inside(Vector(x, y, p.LID_Z0 - p.BOSS_H + 0.3))

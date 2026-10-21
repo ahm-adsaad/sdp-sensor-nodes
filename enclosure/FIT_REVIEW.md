@@ -38,9 +38,15 @@ printed.
 - The Dupont housings on J3 stand about 16.5 mm; the lid gives 26 mm above
   the board. Housings on the breakouts in the shield get 37.7 mm at the
   ridge and 20 mm at the walls; keep the breakouts under the ridge.
-- The SMA hole assumes a 6.5 mm barrel with a 6.0 mm flat, 9 mm below the
-  wall top. A hinged whip's pivot sits 15 to 20 mm off the wall and stands
-  up past the 9 mm back eave; a straight whip lies under it.
+- The SMA hole assumes a 6.5 mm barrel with a 6.0 mm flat, 11.5 mm below
+  the wall top, and a plug coupling nut no wider than 9 mm, which then
+  passes 0.5 mm under the lid's drip skirt. A fatter nut needs a lower hole
+  (`SMA_BELOW_TOP`). A hinged whip's pivot sits 15 to 20 mm off the wall and
+  stands up past the 9 mm back eave; a straight whip lies under it.
+- The board hold-down post clears the LoRa module's castellations by
+  0.2 mm at nominal and the board can shift 0.3 mm in its pocket; look at
+  where it lands on the coupon. The back drip skirt clears the back
+  columns by 0.8 mm, tight for an untuned printer.
 - The panel's terminal end is still unknown. Both ends of the rim window
   have a lead slot; seal the spare one.
 

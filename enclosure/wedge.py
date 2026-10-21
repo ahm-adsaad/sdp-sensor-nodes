@@ -45,7 +45,7 @@ def _cheeks() -> list[Part]:
 def _front_wall() -> Part:
     a = math.radians(p.PANEL_ANGLE)
     wall = Box(p.PLATE_L, p.CHEEK_T, p.FRONT_LIFT + p.PLATE_T * math.cos(a) + SINK, align=MIN)
-    n = int((p.PLATE_L - 2 * p.CHEEK_T - p.DIAMOND) // p.DIAMOND_PITCH)
+    n = int((p.PLATE_L - 2 * (p.CHEEK_T + p.FOOT_L) - p.DIAMOND) // p.DIAMOND_PITCH)   # keep clear of the front feet
     start = p.PLATE_L / 2 - (n - 1) * p.DIAMOND_PITCH / 2
     side = p.DIAMOND / math.sqrt(2)
     diamonds = [Pos(start + i * p.DIAMOND_PITCH, -1, p.FRONT_LIFT / 2) * Rot(0, 45, 0)
@@ -55,10 +55,14 @@ def _front_wall() -> Part:
 
 
 def _feet() -> list[Part]:
+    """Four feet turned outward from the cheeks' bottom corners, so the screws are driven from above.
+
+    The front pair overlaps the front wall and the back pair reaches 1 mm into the cheeks, so they fuse.
+    """
     feet = []
-    for x0 in (p.CHEEK_T - EPS, p.PLATE_L - p.CHEEK_T - p.FOOT_L + EPS):
-        for y0 in (0.0, p.WEDGE_SPAN_Y - p.FOOT_W):
-            feet.append(Pos(x0, y0, 0) * Box(p.FOOT_L, p.FOOT_W, p.FOOT_T, align=MIN))
+    for x0 in (0.0, p.PLATE_L - p.CHEEK_T - p.FOOT_L):
+        feet.append(Pos(x0, -p.FOOT_W, 0) * Box(p.CHEEK_T + p.FOOT_L, p.FOOT_W + p.CHEEK_T, p.FOOT_T, align=MIN))
+        feet.append(Pos(x0, p.WEDGE_SPAN_Y - 1.0, 0) * Box(p.CHEEK_T + p.FOOT_L, p.FOOT_W + 1.0, p.FOOT_T, align=MIN))
     return feet
 
 
@@ -66,7 +70,7 @@ def _screw_cutters() -> list[Part]:
     csk_depth = (p.CSK_D - p.SCREW_D) / 2
     cutters = []
     for x in (p.CHEEK_T + p.FOOT_L / 2, p.PLATE_L - p.CHEEK_T - p.FOOT_L / 2):
-        for y in (p.FOOT_W / 2, p.WEDGE_SPAN_Y - p.FOOT_W / 2):
+        for y in (-p.FOOT_W / 2, p.WEDGE_SPAN_Y + p.FOOT_W / 2):
             cutters.append(Pos(x, y, -1) * Cylinder(p.SCREW_D / 2, p.FOOT_T + 2, align=CENTRE_BASE))
             cutters.append(Pos(x, y, p.FOOT_T - csk_depth) * Cone(p.SCREW_D / 2, p.CSK_D / 2, csk_depth + EPS, align=CENTRE_BASE))
     return cutters

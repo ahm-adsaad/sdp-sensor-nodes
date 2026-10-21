@@ -158,8 +158,9 @@ the seams of round ones cut through this floor.
   long. The HS1040 lies here along Y on two 45-degree V-blocks that hold
   it 2 mm off the floor, its axis 10.5 mm from the fence (5 mm of bend room
   for the terminal wires, cell radius 5.5), leads at the back end bending
-  toward U11. A zip tie passes under the cell between the blocks; no groove
-  is needed. Lead reach, from the Eaton tolerances: the run from the cell
+  toward U11. A zip tie passes under the cell between the blocks, down one
+  chimney hole and up the other, round the 4 mm web between them, so the
+  cell is tied to the floor and not merely encircled. Lead reach, from the Eaton tolerances: the run from the cell
   end to the inside of U11's clamp is about 21 mm, the (+) lead is 24 to
   30 mm and reaches, the (-) lead is 19 to 25 mm and reaches at nominal
   length but may need a soldered 15 mm extension on a short one. The solar
@@ -171,13 +172,16 @@ the seams of round ones cut through this floor.
   corner (between the two 0402 parts and the corner); the strip is 3.9 mm
   deep, which a 4 mm post would overrun. With the lid off the board lifts
   straight out.
-- **Chimney holes**: three 6 mm holes through the upper floor along the
-  gable ridge under the wire bay, between the V-blocks, plus the two in the
-  front channel. None under the board.
+- **Chimney holes**: two 6 mm square holes through the upper floor along the
+  gable ridge under the wire bay, between the V-blocks, with a 4 mm web
+  between them for the zip tie, plus the two in the front channel. None
+  under the board.
 - **Antenna**: a 6.5 mm D-cut hole with a 6.0 mm flat through the back wall,
   10 mm from the left end's outer face so the nut clears the corner column,
-  9 mm below the wall top, so the jack and nut clear the board, the header
-  housings and the eave notches above. The lid's back eave is only 9 mm for this reason: a
+  11.5 mm below the wall top: the whip plug's 9 mm coupling nut then passes
+  under the lid's drip skirt, which hangs 6 mm below the lid 7 to 9 mm off
+  the wall, while the hole's bottom stays 1.25 mm above the terminal tops
+  and clear of the eave notches. The lid's back eave is only 9 mm for this reason: a
   hinged whip's pivot sits 15 to 20 mm off the wall and must stand up past
   the eave and its skirt, and a straight whip lies horizontally under it. Either way the whip is behind
   the panel's high edge, out of its sun.
@@ -211,12 +215,15 @@ skirt 6 mm deep round the edge; a 1.6 mm labyrinth skirt 6 mm deep round
 the column envelope with a 2.5 mm air gap, so eave air enters under the
 skirt and rain running off the lid cannot, merged into the drip skirt along
 the back where there is no room for two; the three hold-down posts;
-four 8 mm bosses, 5 mm deep, with 4.0 x 6.5 mm insert holes for the wedge
-feet. The bosses overlap the labyrinth skirt at the ends and fuse with it.
-Top: four countersunk 3.4 mm holes at the columns, and a 4 mm hole for the
-solar leads over the gap between the terminal fence and the cell, at U9's
-position, which puts it 11 to 14 mm from the front wall and under the panel
-plate. The wedge is centred on the body, not the lid.
+four 8 mm bosses, 5 mm deep, with 4.0 mm holes right through for the wedge
+feet, the insert melted into the top of each, so an M3 x 12 through a 4 mm
+foot never bottoms out. The bosses overlap the labyrinth skirt at the ends
+and fuse with it. Top: four countersunk 3.4 mm holes at the columns, and a
+4 mm hole for the solar leads over the gap between the terminal fence and
+the cell, set 1 mm behind the wedge's front wall so the wall dams the water
+that sheds off the panel's low edge; it lands about 2.5 mm behind U9 and is
+sealed with silicone once the leads are in. The wedge is centred on the
+body, not the lid.
 
 ## Panel wedge
 
@@ -230,8 +237,11 @@ sits at each end of the window, as the terminal end is still unknown. Two
 2.4 mm front wall of the same 8 mm height carries the plate's low edge,
 pierced by a row of 5 mm diamond openings on a 9 mm pitch so air still
 passes under the panel and out of the open back. Four feet, 10 x 8 x 4 mm,
-turn inward from the cheeks' bottom corners with 3.4 mm countersunk holes
-for M3 screws into the lid bosses. The angle, 45 degrees, is one parameter;
+turn outward from the cheeks' bottom corners, the front pair in front of the
+front wall and the back pair behind the open back, with 3.4 mm countersunk
+holes for M3 screws into the lid bosses; turned inward they would sit under
+the plate with 8 mm of headroom and no screw could be driven. The diamond
+row stops short of the front feet. The angle, 45 degrees, is one parameter;
 the cheek profile, front wall and feet follow it. Printed feet down, the
 plate's underside is a 45-degree overhang and everything else is vertical
 or on the bed, so there is no bridge anywhere; a recess on the panel face

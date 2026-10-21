@@ -81,7 +81,8 @@ cd enclosure
 ## Assembly
 
 1. Melt four inserts into the body's corner columns from the top and four
-   into the bosses under the lid.
+   into the lid from its top face, where the boss holes open; the holes go
+   right through the bosses.
 2. Fit the SMA jack through the hole in the back wall, near the left end, and
    plug the pigtail onto JP2.
 3. Stick the SHT41 on the left pad and the ENS160 on the right pad inside the
@@ -89,14 +90,17 @@ cd enclosure
    slot in the front channel one plug at a time and onto J3.
 4. Drop the board into its pocket, terminal edge toward the wire bay, U.FL
    corner at the back left. It rests on ledges under three edges.
-5. Lay the cell on the V-blocks in the wire bay, leads at the back, zip tie
-   under it between the blocks. Trim the leads and screw them into U11; the
-   shorter (-) lead reaches at its nominal length and wants a soldered
-   extension if it comes up short.
+5. Lay the cell on the V-blocks in the wire bay, leads at the back. Pass the
+   zip tie down one of the two square chimney holes between the blocks and
+   up the other, round the web, then over the cell. Trim the leads and screw
+   them into U11; the shorter (-) lead reaches at its nominal length and
+   wants a soldered extension if it comes up short.
 6. Stick foam squares on the three lid posts.
 7. Stick the panel inside the wedge's rim with its leads through the nearer
    slot, seal the other slot, and screw the wedge to the lid with four
-   M3 x 12 screws. Feed the leads through the lid hole to U9.
+   M3 x 12 screws; all four screw heads sit outside the wedge, in open
+   sight. Feed the leads through the lid hole, which sits just behind the
+   wedge's front wall, to U9, and seal the hole with silicone.
 8. Screw the body's ears to the ledge, or zip tie them, with the lid off.
 9. Screw the lid down with four M3 x 8 screws.
 

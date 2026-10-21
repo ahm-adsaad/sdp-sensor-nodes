@@ -39,6 +39,7 @@ def build_lid() -> Part:
     for x, y in p.INSERT_XY:
         cutters.append(rod(x, y, p.SCREW_D, bottom - 1, top + 1))
         cutters.append(Pos(x, y, top - csk_depth) * Cone(p.SCREW_D / 2, p.CSK_D / 2, csk_depth + EPS, align=CENTRE_BASE))
-    cutters += [rod(x, y, p.INSERT_D, top - p.INSERT_DEPTH, top + 1) for x, y in p.BOSS_XY]
+    # through the boss, so an M3 x 12 through a 4 mm foot never bottoms out; the insert sits at the top
+    cutters += [rod(x, y, p.INSERT_D, bottom - p.BOSS_H - 1, top + 1) for x, y in p.BOSS_XY]
     cutters.append(rod(*p.PV_HOLE_XY, p.PV_HOLE_D, bottom - p.BOSS_H - 1, top + 1))
     return lid.cut(*cutters)

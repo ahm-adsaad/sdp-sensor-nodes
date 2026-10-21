@@ -139,8 +139,9 @@ PV_HOLE_D = 4.0
 
 # ---- antenna ----------------------------------------------------------------------------
 SMA_D, SMA_FLAT = 6.5, 6.0
+SMA_PLUG_D = 9.0        # the whip plug's coupling nut, which must pass under the lid's drip skirt
 SMA_X = 10.0            # from the left end's outer face, along the back wall
-SMA_BELOW_TOP = 9.0     # hole centre below the wall top, clear of the eave notches
+SMA_BELOW_TOP = 11.5    # hole centre below the wall top: nut under the drip skirt, barrel above the terminals
 
 # ---- panel wedge (PowerFilm MP3-37 at PANEL_ANGLE) ------------------------------------------
 PANEL_ANGLE = 45.0
@@ -235,8 +236,7 @@ CELL_Y1 = CELL_Y0 + CELL_L
 CELL_LEAD_END = "back"
 VBLOCKS = tuple(Rect(WIRE_BAY.x0, y - VBLOCK_T / 2, WIRE_BAY.x1, y + VBLOCK_T / 2)
                 for y in (CELL_Y0 + 8.0, CELL_Y0 + 34.0))
-CHIMNEY_XY = tuple((WIRE_BAY.x0 + dx, SENSOR_INNER.cy) for dx in (4.0, 10.0, 16.0))
-PV_HOLE_XY = (WIRE_BAY.x0 + CELL_BEND_ROOM / 2, U9_XY[1])
+CHIMNEY_XY = tuple((WIRE_BAY.x0 + dx, SENSOR_INNER.cy) for dx in (5.0, 15.0))   # a 4 mm web between them takes the zip tie
 
 # ---- front channel: sensor lead slot, drains, chimneys ----
 CHANNEL_SLOT_RECT = Rect.centred(J3_XY[0], (SENSOR_INNER.y0 + 0.6 + CHANNEL.y1 - 0.3) / 2, *CHANNEL_SLOT)
@@ -319,9 +319,13 @@ LABYRINTH = COLUMN_ENV.inset(-(LABYRINTH_GAP + SKIRT_T)).clip(LID.inset(SKIRT_T)
 WEDGE_SPAN_Y = PLATE_W * math.cos(math.radians(PANEL_ANGLE))
 WEDGE_RISE = PLATE_W * math.sin(math.radians(PANEL_ANGLE))
 WEDGE_ORIGIN = (BODY_X / 2 - PLATE_L / 2, BODY_Y / 2 - WEDGE_SPAN_Y / 2)
+# the feet turn outward, in front of the front wall and behind the open back, so every screw is driven from open sky
 BOSS_XY = tuple((WEDGE_ORIGIN[0] + x, WEDGE_ORIGIN[1] + y)
                 for x in (CHEEK_T + FOOT_L / 2, PLATE_L - CHEEK_T - FOOT_L / 2)
-                for y in (FOOT_W / 2, WEDGE_SPAN_Y - FOOT_W / 2))
+                for y in (-FOOT_W / 2, WEDGE_SPAN_Y + FOOT_W / 2))
+# solar lead hole: over the bend gap between the terminal fence and the cell, behind the wedge's front wall so the
+# wall dams the water that sheds off the panel's low edge
+PV_HOLE_XY = (WIRE_BAY.x0 + CELL_BEND_ROOM / 2, max(U9_XY[1], WEDGE_ORIGIN[1] + CHEEK_T + 1.0 + PV_HOLE_D / 2))
 
 
 def coupon_fences() -> tuple[tuple[Rect, tuple[Rect, ...]], tuple[Rect, tuple[Rect, ...]]]:

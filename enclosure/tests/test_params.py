@@ -2,9 +2,15 @@ import importlib
 import math
 import os
 
+import pytest
+
 import params as p
 
+EXPORT = os.environ.get("ENCLOSURE_BOARD") == "export"
+pinned = pytest.mark.skipif(EXPORT, reason="numbers pinned to the ruler outline")
 
+
+@pinned
 def test_body_size_matches_spec():
     assert (round(p.BODY_X, 1), round(p.BODY_Y, 1), round(p.BODY_Z, 1)) == (80.4, 51.4, 78.1)
     assert round(p.INNER_X, 1) == 75.6 and round(p.INNER_Y, 1) == 46.6
@@ -53,13 +59,16 @@ def test_cell_fits_the_wire_bay_and_reaches_u11():
     assert math.isclose(p.CELL_AXIS_Z - p.Z_FLOOR, p.CELL_R * math.sqrt(2))
 
 
-def test_chimney_holes_avoid_the_board():
+def test_chimney_holes_avoid_the_board_and_leave_a_web_for_the_zip_tie():
     for x, y in p.CHIMNEY_XY + p.CHANNEL_CHIMNEY_XY:
         assert not p.POCKET.inset(-p.CHIMNEY_D / 2).contains_point(x, y)
-    assert len(p.CHIMNEY_XY) == 3
+    xs = sorted(x for x, _ in p.CHIMNEY_XY)
+    assert len(xs) == 2
+    for a, b in zip(xs, xs[1:]):
+        assert b - a - p.CHIMNEY_D >= 3.0
     for x, y in p.CHIMNEY_XY:
         assert math.isclose(y, p.SENSOR_INNER.cy)
-        assert p.WIRE_BAY.inset(p.CHIMNEY_D / 2 - 0.01).contains_point(x, y)
+        assert p.WIRE_BAY.inset(p.CHIMNEY_D / 2 + 1.0).contains_point(x, y)
 
 
 def test_channel_slot_sits_over_the_sensor_cavity():
@@ -84,6 +93,7 @@ def test_sensor_pads_sit_far_apart_under_the_ridge():
         assert math.isclose(pad.cy, p.SENSOR_INNER.cy)
 
 
+@pinned
 def test_notches_avoid_columns_and_count():
     assert len(p.NOTCHES) == 12
     corner = p.COLUMN - p.WALL + p.NOTCH_W / 2
@@ -92,6 +102,7 @@ def test_notches_avoid_columns_and_count():
         assert corner <= c <= length - corner
 
 
+@pinned
 def test_lid_eaves_and_skirts():
     assert (round(p.LID.w, 1), round(p.LID.d, 1)) == (124.0, 75.4)
     assert math.isclose(p.LID.y1 - p.BODY_Y, p.EAVE_BACK) and math.isclose(-p.LID.y0, p.EAVE_FRONT)
@@ -102,17 +113,28 @@ def test_lid_eaves_and_skirts():
 
 def test_back_eave_clears_a_hinged_whip():
     assert p.EAVE_BACK <= 10.0 and p.SMA_Z + p.SMA_D / 2 + 1.0 <= p.BODY_Z
-    assert p.SMA_Z - p.SMA_D / 2 >= p.BOARD_TOP_Z + p.TERMINAL_H
+    assert p.SMA_Z - p.SMA_D / 2 >= p.BOARD_TOP_Z + p.TERMINAL_H + 1.0
+
+
+def test_sma_plug_nut_clears_the_lid_skirt():
+    assert p.SMA_Z + p.SMA_PLUG_D / 2 + 0.5 <= p.LID_Z0 - p.SKIRT_DROP
+
+
+def test_solar_lead_hole_sits_behind_the_wedge_front_wall():
+    x, y = p.PV_HOLE_XY
+    assert y - p.PV_HOLE_D / 2 >= p.WEDGE_ORIGIN[1] + p.CHEEK_T + 0.5
+    assert p.WIRE_BAY.contains_point(x, y) and x + p.PV_HOLE_D / 2 < p.CELL_X - p.CELL_R
 
 
 def test_wedge_sits_on_the_lid_over_the_body():
     x0, y0 = p.WEDGE_ORIGIN
-    footprint = p.Rect(x0, y0, x0 + p.PLATE_L, y0 + p.WEDGE_SPAN_Y)
+    footprint = p.Rect(x0, y0 - p.FOOT_W, x0 + p.PLATE_L, y0 + p.WEDGE_SPAN_Y + p.FOOT_W)
     assert p.LID.inset(1.5).contains(footprint)
     assert math.isclose(x0 + p.PLATE_L / 2, p.BODY_X / 2) and math.isclose(y0 + p.WEDGE_SPAN_Y / 2, p.BODY_Y / 2)
     assert len(p.BOSS_XY) == 4
     for bx, by in p.BOSS_XY:
         assert p.LID.inset(p.SKIRT_T + 1.0).contains_point(bx, by)
+        assert by < y0 or by > y0 + p.WEDGE_SPAN_Y        # feet turn outward, so the screws see open sky
     assert footprint.contains_point(*p.PV_HOLE_XY)
 
 
