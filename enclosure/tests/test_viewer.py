@@ -36,23 +36,37 @@ def test_lid_stack_labels_ride_with_the_lid():
     assert viewer.LIFTED == frozenset({"lid", "wedge", "panel"})
 
 
-def test_main_embeds_model_and_labels(tmp_path, monkeypatch):
+def test_main_embeds_model_labels_and_dimensions(tmp_path, monkeypatch):
     (tmp_path / "out").mkdir()
     (tmp_path / "out" / "assembly.glb").write_bytes(b"glTF-test")
     (tmp_path / "viewer_template.html").write_text(
-        'const GLB = "__GLB_BASE64__"; const LABELS = __LABELS_JSON__; const LIFTED = __LIFTED_JSON__;',
+        'const GLB = "__GLB_BASE64__"; const LABELS = __LABELS_JSON__; const LIFTED = __LIFTED_JSON__;'
+        '<tbody>__DIMENSIONS_HTML__</tbody>',
         encoding="utf-8")
     monkeypatch.setattr(viewer, "HERE", tmp_path)
     html = viewer.main().read_text(encoding="utf-8")
-    for token in ("__GLB_BASE64__", "__LABELS_JSON__", "__LIFTED_JSON__"):
+    for token in ("__GLB_BASE64__", "__LABELS_JSON__", "__LIFTED_JSON__", "__DIMENSIONS_HTML__"):
         assert token not in html
     labels_json = html.split("const LABELS = ", 1)[1].split("; const LIFTED")[0]
     assert json.loads(labels_json) == viewer.labels()
+    assert "<tr><th scope=\"row\">Body walls</th><td>80.4 &times; 51.4 &times; 78.1</td></tr>" in html
+    assert "145.4" not in html
+
+
+def test_dimension_rows_come_from_params():
+    rows = dict(viewer.dimensions())
+    assert rows["Body walls"] == "80.4 × 51.4 × 78.1"
+    assert rows["Lid"] == "124.0 × 75.4"
+    assert rows["Board pocket"] == "53.6 × 38.6"
+    assert rows["Panel plate"].startswith("120.0 × 42.0")
+    assert "Wall" in rows and rows["Wall"] == "2.4"
 
 
 def test_template_lifts_the_whole_lid_stack():
     template = (viewer.HERE / "viewer_template.html").read_text(encoding="utf-8")
     assert template.count(viewer.LIFTED_TOKEN) == 1
+    assert template.count(viewer.DIMENSIONS_TOKEN) == 1
     for name in sorted(viewer.PARTS):
         assert f'"{name}"' in template
     assert "rev 2" in template and "Two panels" not in template
+    assert "lid_2panel" not in template and "wedge.3mf" in template

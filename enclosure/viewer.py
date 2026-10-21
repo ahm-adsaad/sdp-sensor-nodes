@@ -18,6 +18,7 @@ import params as p  # noqa: E402
 GLB_TOKEN = "__GLB_BASE64__"
 LABELS_TOKEN = "__LABELS_JSON__"
 LIFTED_TOKEN = "__LIFTED_JSON__"
+DIMENSIONS_TOKEN = "__DIMENSIONS_HTML__"
 LIMIT_BYTES = 15 * 1024 * 1024
 PARTS = frozenset({"body", "lid", "wedge", "pcb", "cell", "sensors", "panel"})
 LIFTED = frozenset({"lid", "wedge", "panel"})   # the stack that lifts off the body together
@@ -81,15 +82,44 @@ def labels() -> list[dict]:
     ]
 
 
+def _size(*values: float) -> str:
+    return " × ".join(f"{v:.1f}" for v in values)
+
+
+def dimensions() -> list[tuple[str, str]]:
+    """Rows for the viewer's dimension table, in millimetres, straight from params."""
+    wedge_h = p.FRONT_LIFT + p.WEDGE_RISE
+    return [
+        ("Body walls", _size(p.BODY_X, p.BODY_Y, p.BODY_Z)),
+        ("With ears and columns", _size(p.BODY_X + 2 * p.EAR_OUT, p.BODY_Y + 2 * p.COLUMN_OUT)),
+        ("Height with lid and wedge", _size(p.LID_Z1 + wedge_h)),
+        ("Electronics cavity", _size(p.INNER_X, p.INNER_Y, p.ABOVE_BOARD + p.BOARD_T + p.BOARD_STANDOFF)),
+        ("Sensor shield", _size(p.SENSOR_INNER.w, p.SENSOR_INNER.d, p.Z_CEILING - p.Z_LOWER_FLOOR)),
+        ("Lid", _size(p.LID.w, p.LID.d)),
+        ("Board pocket", _size(p.POCKET_X, p.POCKET_Y)),
+        ("Wire bay", _size(p.WIRE_BAY.w, p.WIRE_BAY.d)),
+        ("Panel plate", f"{_size(p.PLATE_L, p.PLATE_W)} at {p.PANEL_ANGLE:.0f}°"),
+        ("Wall", f"{p.WALL:.1f}"),
+    ]
+
+
+def _dimensions_html() -> str:
+    rows = []
+    for name, value in dimensions():
+        rows.append(f'<tr><th scope="row">{name}</th><td>{value.replace("×", "&times;")}</td></tr>')
+    return "\n".join(rows)
+
+
 def main() -> Path:
     glb = (HERE / "out" / "assembly.glb").read_bytes()
     template = (HERE / "viewer_template.html").read_text(encoding="utf-8")
-    for token in (GLB_TOKEN, LABELS_TOKEN, LIFTED_TOKEN):
+    for token in (GLB_TOKEN, LABELS_TOKEN, LIFTED_TOKEN, DIMENSIONS_TOKEN):
         if template.count(token) != 1:
             raise RuntimeError(f"viewer_template.html must contain {token} exactly once")
     html = (template.replace(GLB_TOKEN, base64.b64encode(glb).decode("ascii"))
                     .replace(LABELS_TOKEN, json.dumps(labels()))
-                    .replace(LIFTED_TOKEN, json.dumps(sorted(LIFTED))))
+                    .replace(LIFTED_TOKEN, json.dumps(sorted(LIFTED)))
+                    .replace(DIMENSIONS_TOKEN, _dimensions_html()))
     if len(html.encode("utf-8")) > LIMIT_BYTES:
         raise RuntimeError("viewer is over 15 MB; raise linear_deflection for the GLB in build.py")
     out = HERE / "out" / "viewer.html"
