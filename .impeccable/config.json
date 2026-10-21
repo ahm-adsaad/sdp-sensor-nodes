@@ -38,6 +38,24 @@
         ],
         "createdAt": "2026-10-19T07:10:56.970Z",
         "reason": "Claude and the finish reviewer of poster.html: same 86 pt two-line title on an A0 print poster read at 1-2 m; the screen-viewport rule does not apply"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "ibm plex mono",
+        "createdAt": "2026-10-21T12:21:30.292Z",
+        "reason": "enclosure viewer template kept its September 2026 type (commit 63a3325); DESIGN.md documents the poster, not this viewer"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "barlow semi condensed",
+        "createdAt": "2026-10-21T12:21:31.239Z",
+        "reason": "enclosure viewer template kept its September 2026 type (commit 63a3325); DESIGN.md documents the poster, not this viewer"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "barlow",
+        "createdAt": "2026-10-21T12:21:32.205Z",
+        "reason": "enclosure viewer template kept its September 2026 type (commit 63a3325); DESIGN.md documents the poster, not this viewer"
       }
     ]
   }
