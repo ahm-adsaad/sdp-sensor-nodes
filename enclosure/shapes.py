@@ -123,3 +123,11 @@ def unsupported_faces(part: Part, bed_z: float = 0.0, max_bridge: float = 10.0,
             continue
         bad.append((round(nz, 3), round(bb.size.X, 1), round(bb.size.Y, 1), round(bb.min.Z, 1), round(f.area, 1)))
     return bad
+
+
+def print_ready(part: Part, flip: bool) -> Part:
+    """Optionally turn the part upside down, then centre it on the bed with its lowest point on z=0."""
+    if flip:
+        part = Rot(180, 0, 0) * part
+    bb = part.bounding_box()
+    return Pos(-bb.center().X, -bb.center().Y, -bb.min.Z) * part

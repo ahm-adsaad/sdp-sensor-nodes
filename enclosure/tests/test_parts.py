@@ -130,3 +130,73 @@ def test_louvre_slots_are_open_at_the_wall_middle(body):
 
 def test_body_prints_without_support(body):
     assert unsupported_faces(body) == []
+
+
+from lid import build_lid  # noqa: E402
+from shapes import print_ready, solar_panel  # noqa: E402
+from wedge import build_wedge  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def lid():
+    return build_lid()
+
+
+@pytest.fixture(scope="module")
+def wedge():
+    return build_wedge()
+
+
+def test_lid_is_one_valid_solid(lid):
+    assert lid.is_valid and len(lid.solids()) == 1
+
+
+def test_lid_clears_body_and_board_keepout(lid, body):
+    for other in (body, pcb_board(), board_keepout(), cell(), cell_leads()):
+        assert overlap(lid, other) < 1e-3
+
+
+def test_lid_posts_reach_their_tips(lid):
+    for x, y, d, tip in p.POSTS:
+        assert lid.is_inside(Vector(x, y, tip + 0.5)) and not lid.is_inside(Vector(x, y, tip - 0.5))
+
+
+def test_lid_holes_and_bosses(lid):
+    for x, y in p.INSERT_XY:
+        assert not lid.is_inside(Vector(x, y, p.LID_Z0 + p.LID_T / 2))
+    for x, y in p.BOSS_XY:
+        assert lid.is_inside(Vector(x + p.BOSS_D / 2 - 0.5, y, p.LID_Z0 - p.BOSS_H / 2))
+        assert not lid.is_inside(Vector(x, y, p.LID_Z1 - 1.0))
+    assert not lid.is_inside(Vector(*p.PV_HOLE_XY, p.LID_Z0 + 1.0))
+    assert lid.is_inside(Vector(p.LABYRINTH.x0 + p.SKIRT_T / 2, p.LABYRINTH.cy, p.LID_Z0 - p.SKIRT_DROP / 2))
+    assert lid.is_inside(Vector(p.LID.x0 + p.SKIRT_T / 2, p.LID.cy, p.LID_Z0 - p.SKIRT_DROP / 2))
+
+
+def test_lid_prints_without_support():
+    printed = print_ready(build_lid(), flip=True)
+    assert printed.bounding_box().min.Z == pytest.approx(0.0, abs=1e-6)
+    assert unsupported_faces(printed) == []
+
+
+def test_wedge_is_valid_and_sits_on_the_lid(wedge, lid):
+    assert wedge.is_valid and len(wedge.solids()) == 1
+    bb = wedge.bounding_box()
+    assert bb.min.Z == pytest.approx(p.LID_Z1, abs=0.01)
+    assert overlap(wedge, lid) < 1e-3
+    x0, y0 = p.WEDGE_ORIGIN
+    assert wedge.is_inside(Vector(x0 + p.PLATE_L / 2 + p.DIAMOND_PITCH / 2, y0 + p.CHEEK_T / 2, p.LID_Z1 + 1.0))   # front wall web
+    assert not wedge.is_inside(Vector(x0 + p.PLATE_L / 2, y0 + p.WEDGE_SPAN_Y / 2, p.LID_Z1 + 3.0))              # air under the plate
+    assert wedge.is_inside(Vector(x0 + p.CHEEK_T / 2, y0 + p.WEDGE_SPAN_Y / 2, p.LID_Z1 + 10.0))                  # cheek
+    for bx, by in p.BOSS_XY:
+        assert not wedge.is_inside(Vector(bx, by, p.LID_Z1 + 1.0))                                                  # foot screw hole
+
+
+def test_wedge_prints_without_support(wedge):
+    assert unsupported_faces(print_ready(wedge, flip=False)) == []
+
+
+def test_panel_sits_in_the_rim_window(wedge):
+    panel = solar_panel()
+    assert overlap(panel, wedge) < 1e-3
+    assert panel.bounding_box().size.X == pytest.approx(p.PV_L, abs=0.01)
+    assert panel.bounding_box().min.Z > p.LID_Z1 + p.FRONT_LIFT
