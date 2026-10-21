@@ -14,3 +14,6 @@ forecast/.env
 
 # LoRaWAN OTAA keys stay local
 secrets.h
+
+# plan-execution scratch
+.superpowers/
