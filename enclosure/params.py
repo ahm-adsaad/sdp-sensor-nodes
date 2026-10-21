@@ -154,6 +154,9 @@ PV_L, PV_W, PV_T, PV_CLR = 114.0, 36.5, 0.22, 0.3
 PV_SLOT = (1.5, 8.0)
 DIAMOND, DIAMOND_PITCH = 5.0, 9.0
 
+# ---- assembly view only ----------------------------------------------------------------------
+ASSEMBLY_LIFT = 45.0    # how far the lid, wedge and panel float above the body in the GLB and viewer
+
 # ================= derived: nothing below here is a free parameter =================
 
 POCKET_X = BOARD_X + 2 * CLEARANCE

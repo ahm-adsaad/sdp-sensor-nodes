@@ -19,6 +19,7 @@ GLB_TOKEN = "__GLB_BASE64__"
 LABELS_TOKEN = "__LABELS_JSON__"
 LIFTED_TOKEN = "__LIFTED_JSON__"
 DIMENSIONS_TOKEN = "__DIMENSIONS_HTML__"
+LID_LIFT_TOKEN = "__LID_LIFT__"
 LIMIT_BYTES = 15 * 1024 * 1024
 PARTS = frozenset({"body", "lid", "wedge", "pcb", "cell", "sensors", "panel"})
 LIFTED = frozenset({"lid", "wedge", "panel"})   # the stack that lifts off the body together
@@ -113,13 +114,14 @@ def _dimensions_html() -> str:
 def main() -> Path:
     glb = (HERE / "out" / "assembly.glb").read_bytes()
     template = (HERE / "viewer_template.html").read_text(encoding="utf-8")
-    for token in (GLB_TOKEN, LABELS_TOKEN, LIFTED_TOKEN, DIMENSIONS_TOKEN):
+    for token in (GLB_TOKEN, LABELS_TOKEN, LIFTED_TOKEN, DIMENSIONS_TOKEN, LID_LIFT_TOKEN):
         if template.count(token) != 1:
             raise RuntimeError(f"viewer_template.html must contain {token} exactly once")
     html = (template.replace(GLB_TOKEN, base64.b64encode(glb).decode("ascii"))
                     .replace(LABELS_TOKEN, json.dumps(labels()))
                     .replace(LIFTED_TOKEN, json.dumps(sorted(LIFTED)))
-                    .replace(DIMENSIONS_TOKEN, _dimensions_html()))
+                    .replace(DIMENSIONS_TOKEN, _dimensions_html())
+                    .replace(LID_LIFT_TOKEN, json.dumps(p.ASSEMBLY_LIFT)))
     if len(html.encode("utf-8")) > LIMIT_BYTES:
         raise RuntimeError("viewer is over 15 MB; raise linear_deflection for the GLB in build.py")
     out = HERE / "out" / "viewer.html"

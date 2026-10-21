@@ -370,6 +370,7 @@ __DIMENSIONS_HTML__
   const GLB = "__GLB_BASE64__";
   const LABELS = __LABELS_JSON__;
   const LIFTED = __LIFTED_JSON__;
+  const LID_LIFT = __LID_LIFT__;   // millimetres; the model file is in metres
 
   (function () {
     const stage = document.getElementById("stage");
@@ -491,9 +492,10 @@ __DIMENSIONS_HTML__
       const stack = stackParts();
       if (!stack.length) return;
       stack.forEach((part) => { part.visible = state !== "hidden"; });
-      const targets = stack.map((part) => (state === "seated" ? new THREE.Vector3(0, 0, 0) : part.userData.lifted.clone()));
+      // the wedge and panel carry their own placement in the file, so "seated" is lifted minus the lift, not zero
+      const targets = stack.map((part) => (state === "seated" ? part.userData.seated.clone() : part.userData.lifted.clone()));
       if (instant || reduceMotion) {
-        stack.forEach((part, i) => part.position.copy(targets[i]));
+        stack.forEach((part, i) => { part.position.copy(targets[i]); });
         return;
       }
       const froms = stack.map((part) => part.position.clone());
@@ -527,7 +529,7 @@ __DIMENSIONS_HTML__
         const part = parts[t.label.part];
         const [x, y, z] = t.label.at;
         t.point.set(x / 1000, y / 1000, z / 1000);            // the model file is in metres
-        if (LIFTED.includes(t.label.part) && part) t.point.add(part.position);
+        if (LIFTED.includes(t.label.part) && part) t.point.add(part.position.clone().sub(part.userData.seated));
         projected.copy(t.point);
         modelFrame.localToWorld(projected);
         projected.project(camera);
@@ -641,7 +643,10 @@ __DIMENSIONS_HTML__
       });
       applyEdgeColour();
 
-      stackParts().forEach((part) => { part.userData.lifted = part.position.clone(); });
+      stackParts().forEach((part) => {
+        part.userData.lifted = part.position.clone();
+        part.userData.seated = part.position.clone().sub(new THREE.Vector3(0, 0, LID_LIFT / 1000));
+      });
       scene.updateMatrixWorld(true);
       if (parts.body) new THREE.Box3().setFromObject(parts.body).getCenter(modelCentre);
       fitCamera(DEFAULT_VIEW, Object.values(parts));

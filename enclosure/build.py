@@ -20,8 +20,10 @@ from wedge import build_wedge  # noqa: E402
 
 __all__ = ["build_body", "build_coupon", "build_lid", "build_wedge", "print_ready", "parts", "export_all", "OUT", "LID_LIFT"]
 
+import params as p  # noqa: E402
+
 OUT = HERE / "out"
-LID_LIFT = 45.0   # how far the lid, wedge and panel float above the body in the assembly view
+LID_LIFT = p.ASSEMBLY_LIFT   # the lid, wedge and panel float this far above the body in the assembly view
 
 COLOURS = {
     "body": Color(0.92, 0.92, 0.89),
