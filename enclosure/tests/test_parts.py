@@ -85,7 +85,8 @@ def test_body_supports_are_solid(body):
     for pad in (p.SHT41_PAD, p.ENS160_PAD):
         assert body.is_inside(Vector(pad.cx, pad.cy, p.Z_LOWER_FLOOR + p.SENSOR_PAD_H / 2))
     assert body.is_inside(Vector(p.SENSOR_INNER.cx + 20.0, p.SENSOR_INNER.y0 + 2.0, p.Z_BAND_TOP + 5.0))   # gable solid near the wall, clear of the lead slot
-    assert not body.is_inside(Vector(p.SENSOR_INNER.cx, p.SENSOR_INNER.cy, p.Z_RIDGE - 1.0))         # open under the ridge
+    assert not body.is_inside(Vector(p.SENSOR_INNER.cx, p.SENSOR_INNER.cy, p.Z_CEILING - 1.0))       # open under the ridge flat
+    assert body.is_inside(Vector(p.SENSOR_INNER.cx, p.SENSOR_INNER.cy, p.Z_CEILING + 1.0))           # solid above it
     assert body.is_inside(Vector(p.SENSOR_INNER.cx, p.SENSOR_INNER.cy, p.Z_RIDGE + 1.0))             # upper floor
 
 

@@ -15,16 +15,18 @@ import matplotlib  # noqa: E402
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-from build123d import Part, Pos  # noqa: E402
+from build123d import Part  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
 
-from build import LID_LIFT, OUT, parts  # noqa: E402
-from shapes import pcb_panel, sensor_boards, supercap  # noqa: E402
+from build import OUT, assembly_parts, parts  # noqa: E402
 
 LIGHT = np.array([0.45, -0.55, 0.70]) / np.linalg.norm([0.45, -0.55, 0.70])
 VIEWS = {"front": (24, -62), "back": (30, 118), "top": (88, -90), "under": (-35, -62)}
-BODY_RGB, LID_RGB, PCB_RGB, CAP_RGB = (0.90, 0.88, 0.84), (0.78, 0.83, 0.88), (0.10, 0.35, 0.70), (0.25, 0.25, 0.28)
-SENSOR_RGB = (0.12, 0.55, 0.45)
+PART_RGB = (0.90, 0.88, 0.84)
+RGB = {
+    "body": PART_RGB, "lid": (0.78, 0.83, 0.88), "wedge": (0.78, 0.83, 0.88),
+    "pcb": (0.10, 0.35, 0.70), "cell": (0.25, 0.25, 0.28), "sensors": (0.12, 0.55, 0.45), "panel": (0.12, 0.12, 0.16),
+}
 
 
 def _triangles(part: Part) -> np.ndarray:
@@ -67,16 +69,9 @@ def main() -> None:
     out_dir = OUT / "renders"
     out_dir.mkdir(parents=True, exist_ok=True)
     models = parts()
-    body, lid = models["body"][0], models["lid_2panel"][0]
-    jobs = {
-        "body": [(body, BODY_RGB)],
-        "lid_1panel": [(models["lid_1panel"][0], LID_RGB)],
-        "lid_2panel": [(lid, LID_RGB)],
-        "lid_3panel": [(models["lid_3panel"][0], LID_RGB)],
-        "fit_coupon": [(models["fit_coupon"][0], BODY_RGB)],
-        "assembly": [(body, BODY_RGB), (pcb_panel(), PCB_RGB), (supercap(), CAP_RGB), (sensor_boards(), SENSOR_RGB),
-                     (Pos(0, 0, LID_LIFT) * lid, LID_RGB)],
-    }
+    jobs = {name: [(model, RGB.get(name, PART_RGB))] for name, (model, _) in models.items()}
+    assembly = assembly_parts(models["body"][0], models["lid"][0], models["wedge"][0])
+    jobs["assembly"] = [(part, RGB[part.label]) for part in assembly]
     for name, items in jobs.items():
         for path in _render(name, items, out_dir):
             print(path.relative_to(HERE))

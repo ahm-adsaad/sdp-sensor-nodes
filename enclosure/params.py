@@ -120,6 +120,7 @@ DRAIN_D, CHIMNEY_D = 3.0, 6.0
 CHANNEL_SLOT = (12.0, 3.5)
 CHANNEL_CHIMNEY_D = 5.0
 GABLE_ANGLE = 45.0
+RIDGE_FLAT = 8.0       # the gable is truncated to a flat ceiling this wide, so the chimney holes cut a plane; bridges at 8 mm
 
 # ---- lid, eaves, fasteners, mounting ------------------------------------------------
 EAVE_X, EAVE_FRONT, EAVE_BACK = 21.8, 15.0, 9.0
@@ -139,7 +140,7 @@ PV_HOLE_D = 4.0
 # ---- antenna ----------------------------------------------------------------------------
 SMA_D, SMA_FLAT = 6.5, 6.0
 SMA_X = 10.0            # from the left end's outer face, along the back wall
-SMA_BELOW_TOP = 7.0     # hole centre below the wall top
+SMA_BELOW_TOP = 9.0     # hole centre below the wall top, clear of the eave notches
 
 # ---- panel wedge (PowerFilm MP3-37 at PANEL_ANGLE) ------------------------------------------
 PANEL_ANGLE = 45.0
@@ -167,6 +168,7 @@ Z_LOWER_FLOOR = WALL
 Z_BAND_TOP = Z_LOWER_FLOOR + LOUVRE_BAND
 GABLE_RISE = SENSOR_INNER.d / 2 * math.tan(math.radians(GABLE_ANGLE))
 Z_RIDGE = Z_BAND_TOP + GABLE_RISE
+Z_CEILING = Z_RIDGE - RIDGE_FLAT / 2 * math.tan(math.radians(GABLE_ANGLE))   # flat strip where the apex would be
 Z_FLOOR = Z_RIDGE + WALL
 BOARD_BOTTOM_Z = Z_FLOOR + BOARD_STANDOFF
 BOARD_TOP_Z = BOARD_BOTTOM_Z + BOARD_T
@@ -248,13 +250,13 @@ ENS160_PAD = Rect.centred(SENSOR_INNER.x1 - 2 - (ENS160[0] - 2) / 2, SENSOR_INNE
 SENSOR_BOARD_Z = Z_LOWER_FLOOR + SENSOR_PAD_H + SENSOR_FOAM_T
 SHT41_BOARD = Rect.centred(SHT41_PAD.cx, SHT41_PAD.cy, *SHT41)
 ENS160_BOARD = Rect.centred(ENS160_PAD.cx, ENS160_PAD.cy, *ENS160)
-SENSOR_DRAIN_YZ = ((SENSOR_INNER.y0 + 8.0, Z_LOWER_FLOOR + 1.5), (SENSOR_INNER.y1 - 8.0, Z_LOWER_FLOOR + 1.5))
+SENSOR_DRAIN_YZ = ((SENSOR_INNER.y0 + 8.0, Z_LOWER_FLOOR + 1.0), (SENSOR_INNER.y1 - 8.0, Z_LOWER_FLOOR + 1.0))   # cuts 0.5 into the floor so it drains dry
 
 
 def _louvre_rows() -> tuple[float, ...]:
     # A 45 degree slot centred in the wall reaches this far above its centre at the wall face.
     reach = SLOT_H / 2 / math.cos(math.radians(45)) + LOUVRE_WALL / 2 + 1.0
-    rows, z = [], Z_LOWER_FLOOR + reach + 0.3
+    rows, z = [], Z_LOWER_FLOOR + reach + 1.3   # the lowest slot stays above the ears outside
     while z <= Z_BAND_TOP - reach:
         rows.append(z)
         z += SLOT_PITCH
