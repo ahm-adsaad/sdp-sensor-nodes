@@ -125,8 +125,12 @@ One print, open side up, floor on the bed. Outer walls 2.4 mm, overall
 80.4 x 51.4 mm and 78.1 mm tall plus corner columns. Height stack from the
 ground: 2.4 floor, 20.0 louvre band, 21.7 gable (half the 43.4 mm sensor
 cavity), 2.4 upper floor, 4.0 board standoff, 1.6 board, 26.0 above the
-board. The upper floor is 2.4 mm thick only along the ridge; everywhere else
-the solid gable is under it, so holes through it are 2.4 to 24 mm bores.
+board. The gable is truncated 4 mm below its apex to an 8 mm flat ceiling,
+under the 10 mm bridge limit, so the chimney holes pass through a plane
+rather than a sharp ridge; the upper floor is 6.4 mm thick along that flat
+and thicker everywhere else, so holes through it are 6.4 to 24 mm bores.
+All chimney and drain holes are square, because the 3MF mesher mis-handled
+the seams of round ones cut through this floor.
 
 **Electronics cavity**, 75.6 x 46.6 x 31.6 mm inside. From front to back:
 
@@ -162,17 +166,18 @@ the solid gable is under it, so holes through it are 2.4 to 24 mm bores.
   leads drop from the lid hole, which sits over the 5 mm gap between the
   fence and the cell, straight into U9 at the front.
 - **Hold-down** from the lid: two 5 mm posts land on the two screw-terminal
-  bodies through 3 mm foam, and one 4 mm post lands on the bare strip at the
-  board's bottom edge, 1 mm in from the edge and 11.4 mm from the right
-  corner (between the two 0402 parts and the corner). With the lid off the
-  board lifts straight out.
+  bodies through 3 mm foam, and one 3.5 mm post lands on the bare strip at
+  the board's bottom edge, 2 mm in from the edge and 11.4 mm from the right
+  corner (between the two 0402 parts and the corner); the strip is 3.9 mm
+  deep, which a 4 mm post would overrun. With the lid off the board lifts
+  straight out.
 - **Chimney holes**: three 6 mm holes through the upper floor along the
   gable ridge under the wire bay, between the V-blocks, plus the two in the
   front channel. None under the board.
 - **Antenna**: a 6.5 mm D-cut hole with a 6.0 mm flat through the back wall,
   10 mm from the left end's outer face so the nut clears the corner column,
-  7 mm below the wall top, so the jack and nut clear the board and the
-  header housings. The lid's back eave is only 9 mm for this reason: a
+  9 mm below the wall top, so the jack and nut clear the board, the header
+  housings and the eave notches above. The lid's back eave is only 9 mm for this reason: a
   hinged whip's pivot sits 15 to 20 mm off the wall and must stand up past
   the eave and its skirt, and a straight whip lies horizontally under it. Either way the whip is behind
   the panel's high edge, out of its sun.
@@ -180,14 +185,16 @@ the solid gable is under it, so holes through it are 2.4 to 24 mm bores.
   16 mm pitch, under the lid.
 
 **Sensor cavity**, 72.4 x 43.4 mm inside, 20 mm tall at the walls and
-41.7 mm at the ridge. Walls 4 mm thick with two rows of 45-degree slots sloping down
+37.7 mm under the ridge flat. Walls 4 mm thick with two rows of 45-degree slots sloping down
 to the outside, 2.5 mm tall on an 8.5 mm pitch, 14 mm long on the long walls
 and 12 mm on the ends, so no horizontal line of sight and no straight path
 for rain; about 660 mm² of opening. SHT41 pad at the left end, ENS160 pad at
 the right end, each 3 mm tall for foam tape, centred front to back under the
-ridge where the headroom is. Two 3 mm drain holes through each end wall at
-floor level. The ceiling is a 45-degree gable with its ridge along X, which
-is why the upper floor needs no support.
+ridge where the headroom is. Two 3 mm drain holes through each end wall,
+cut 0.5 mm into the floor so nothing pools. The ceiling is a 45-degree
+gable with its ridge along X, which is why the upper floor needs no
+support. The lowest slot row starts high enough that its outward slope
+clears the mounting ears outside.
 
 **Columns, ears, inserts.** Four 9 mm square columns on the outside corners
 run from the ground to the top with a 4.0 x 6.5 mm hole for an M3 heat-set

@@ -309,13 +309,13 @@
 
   <aside class="panel">
     <header class="titleblock">
-      <p class="eyebrow">SDP EH IoT &middot; rev 1.0 board</p>
+      <p class="eyebrow">SDP EH IoT &middot; rev 2 board</p>
       <h1>Sensor Node Enclosure</h1>
       <dl class="cells">
         <div><dt>Material</dt><dd>PETG or ASA</dd></div>
         <div><dt>Units</dt><dd>mm</dd></div>
-        <div><dt>Lid shown</dt><dd>Two panels</dd></div>
-        <div><dt>Issued</dt><dd>14 Sep 2026</dd></div>
+        <div><dt>Panel</dt><dd>One MP3-37 at 45&deg;</dd></div>
+        <div><dt>Issued</dt><dd>21 Oct 2026</dd></div>
       </dl>
     </header>
 
@@ -333,10 +333,11 @@
       <div class="checks">
         <label class="check" for="show-labels"><input type="checkbox" id="show-labels" checked><span class="swatch is-dot"></span><span>Where things go</span></label>
         <label class="check" for="show-sensors"><input type="checkbox" id="show-sensors" checked><span class="swatch" style="background:#1F8C73"></span><span>SHT41 and ENS160 boards</span></label>
-        <label class="check" for="show-pcb"><input type="checkbox" id="show-pcb" checked><span class="swatch" style="background:#1552A8"></span><span>Circuit board with rails</span></label>
-        <label class="check" for="show-cap"><input type="checkbox" id="show-cap" checked><span class="swatch" style="background:#2B2D33"></span><span>Supercapacitor pack</span></label>
+        <label class="check" for="show-pcb"><input type="checkbox" id="show-pcb" checked><span class="swatch" style="background:#1552A8"></span><span>Circuit board</span></label>
+        <label class="check" for="show-cell"><input type="checkbox" id="show-cell" checked><span class="swatch" style="background:#2B2D33"></span><span>HS1040 cell</span></label>
+        <label class="check" for="show-panel"><input type="checkbox" id="show-panel" checked><span class="swatch" style="background:#1F1F29"></span><span>Solar panel</span></label>
       </div>
-      <p class="group-note">The sensors sit low in the front bay, behind the vents. Top view shows every bay at once.</p>
+      <p class="group-note">The sensors sit in the louvred shield under the body, in its shade. The lid lifts with the panel wedge. Top view shows the board pocket and wire bay.</p>
     </fieldset>
 
     <section class="group" aria-labelledby="dims-title">
@@ -374,6 +375,7 @@
 <script>
   const GLB = "__GLB_BASE64__";
   const LABELS = __LABELS_JSON__;
+  const LIFTED = __LIFTED_JSON__;
 
   (function () {
     const stage = document.getElementById("stage");
@@ -487,21 +489,25 @@
       controls.update();
     }
 
+    function stackParts() {
+      return LIFTED.map((name) => parts[name]).filter(Boolean);
+    }
+
     function setLid(state, instant) {
-      const lid = parts.lid;
-      if (!lid) return;
-      lid.visible = state !== "hidden";
-      const target = state === "seated" ? new THREE.Vector3(0, 0, 0) : lid.userData.lifted.clone();
+      const stack = stackParts();
+      if (!stack.length) return;
+      stack.forEach((part) => { part.visible = state !== "hidden"; });
+      const targets = stack.map((part) => (state === "seated" ? new THREE.Vector3(0, 0, 0) : part.userData.lifted.clone()));
       if (instant || reduceMotion) {
-        lid.position.copy(target);
+        stack.forEach((part, i) => part.position.copy(targets[i]));
         return;
       }
-      const from = lid.position.clone();
+      const froms = stack.map((part) => part.position.clone());
       const start = performance.now();
       const duration = 380;
       function step(now) {
         const k = Math.min(1, (now - start) / duration);
-        lid.position.lerpVectors(from, target, 1 - Math.pow(1 - k, 3));
+        stack.forEach((part, i) => part.position.lerpVectors(froms[i], targets[i], 1 - Math.pow(1 - k, 3)));
         if (k < 1) requestAnimationFrame(step);
       }
       requestAnimationFrame(step);
@@ -527,7 +533,7 @@
         const part = parts[t.label.part];
         const [x, y, z] = t.label.at;
         t.point.set(x / 1000, y / 1000, z / 1000);            // the model file is in metres
-        if (t.label.part === "lid" && part) t.point.add(part.position);
+        if (LIFTED.includes(t.label.part) && part) t.point.add(part.position);
         projected.copy(t.point);
         modelFrame.localToWorld(projected);
         projected.project(camera);
@@ -586,7 +592,7 @@
         input.disabled = !parts.lid;
         input.addEventListener("change", () => setLid(input.value, false));
       });
-      const toggles = [["show-pcb", "pcb"], ["show-cap", "supercap"], ["show-sensors", "sensors"]];
+      const toggles = [["show-pcb", "pcb"], ["show-cell", "cell"], ["show-sensors", "sensors"], ["show-panel", "panel"]];
       toggles.forEach(([id, name]) => {
         const box = document.getElementById(id);
         box.disabled = !parts[name];
@@ -621,7 +627,7 @@
       const root = gltf.scene;
       root.scale.setScalar(1000);   // the file is in metres; work in millimetres
       scene.add(root);
-      ["body", "lid", "pcb", "supercap", "sensors"].forEach((name) => { parts[name] = root.getObjectByName(name) || null; });
+      ["body", "lid", "wedge", "pcb", "cell", "sensors", "panel"].forEach((name) => { parts[name] = root.getObjectByName(name) || null; });
       modelFrame = parts.body ? parts.body.parent : root;
 
       root.traverse((obj) => {
@@ -641,7 +647,7 @@
       });
       applyEdgeColour();
 
-      if (parts.lid) parts.lid.userData.lifted = parts.lid.position.clone();
+      stackParts().forEach((part) => { part.userData.lifted = part.position.clone(); });
       scene.updateMatrixWorld(true);
       if (parts.body) new THREE.Box3().setFromObject(parts.body).getCenter(modelCentre);
       fitCamera(DEFAULT_VIEW, Object.values(parts));
