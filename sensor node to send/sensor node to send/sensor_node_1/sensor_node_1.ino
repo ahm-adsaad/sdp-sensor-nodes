@@ -1,7 +1,8 @@
 // SX1276 / MCCI LMIC sensor node (SHT41, ENS160 optional) - NODE 1 keys (DevEUI a382a57121e8bd08).
 // Server sees this board as sensor 1. Do not run it while a Heltec with the same keys is on.
 // Network behaviour matches heltec_v3_node.ino: ADR off + SF7 after join, downlink
-// loss counter, packet types 0x00 status / 0x01-0x03 command responses.
+// loss counter, packet types 0x00 status / 0x01-0x03 command responses. The status packet also
+// carries the storage (LiC) voltage in two extra bytes at the end, see PKT_STATUS.
 //
 // Build: Arduino IDE, MegaCoreX > ATmega4809, Pinout "48 pin standard", Clock "Internal 8 MHz",
 // Programmer "JTAG2UPDI", flash with Sketch > Upload Using Programmer.
@@ -15,6 +16,7 @@
 //   #define DISABLE_BEACONS
 // Compile-tested 2026-10-19 with MegaCoreX 1.2.0 and the versions above. First run on a rev-2
 // board from storage: brown-out reset on every join at LMIC's 16 dBm, hence TX_POWER_DBM.
+// Storage voltage sense added 2026-10-27, compile-tested only.
 // The OTAA keys are in secrets.h next to this file, which is kept out of git.
 #include <Wire.h>
 #include <lmic.h>
@@ -25,6 +27,7 @@
 #define DEBUG 1           // 0 for battery runs: no serial output and the UART pins are parked
 #define USE_ENS160 0      // 1 = ENS160 on the SHT41's bus, left in STANDARD mode (~29 mA, always on)
 #define RAIL_ALWAYS_ON 0  // 1 = keep VCC_SENS_A on between readings (see sensorRailOff)
+#define VSTO_SENSE 1      // 0 = the storage divider on H5 pin 1 is not fitted, status packets send 0 mV
 
 #define SWITCH_RAIL (!RAIL_ALWAYS_ON && !USE_ENS160)
 
@@ -65,10 +68,12 @@ void os_getDevKey(u1_t* buf) { memcpy_P(buf, APPKEY, 16); }
 const uint8_t PIN_RAIL_A = PIN_PD6;  // U8 ENA: VCC_SENS_A on J3, I2C bus A (PA2/PA3)
 const uint8_t PIN_RAIL_B = PIN_PC1;  // U8 ENB: VCC_SENS_B on J4, I2C bus B - unused, held off
 const uint8_t PIN_LED = PIN_PD7;     // never use LED_BUILTIN: MegaCoreX maps it to PA7 = radio NSS
+const uint8_t PIN_VSTO = PIN_PD0;    // H5 pin 1 = AIN0: storage voltage through the R1/R2 divider
 
 // Pins this sketch does not drive: PMIC status PB2-PB4 (not read yet), I2C bus B on PC2/PC3,
 // header H5 (PD0-PD4, PC7) and the unconnected ones. Their digital input buffers are switched
-// off so a floating level cannot draw current.
+// off so a floating level cannot draw current. PD0 stays on the list: the ADC does not use the
+// digital buffer, and a buffer sitting at half the storage voltage would draw current.
 const uint8_t UNUSED_PINS[] = {
   PIN_PB0, PIN_PB1, PIN_PB2, PIN_PB3, PIN_PB4, PIN_PB5,
   PIN_PC0, PIN_PC2, PIN_PC3, PIN_PC4, PIN_PC5, PIN_PC6, PIN_PC7,
@@ -101,6 +106,18 @@ static_assert(TX_INTERVAL >= 10 && TX_INTERVAL <= 1800, "TX_INTERVAL must be 10.
 const int8_t TX_POWER_DBM = 10;
 static_assert(TX_POWER_DBM >= 2 && TX_POWER_DBM <= 17, "TX_POWER_DBM must be 2..17 dBm");
 
+// Storage voltage divider (rev-2 bodge, no PCB footprint): R1 from the + pin of the storage
+// terminal U11 to H5 pin 1, R2 from H5 pin 1 to J4 pin 3 (GND). A ceramic cap across R2 is
+// optional; electrolytics leak too much for a 500 kohm source. The LiC charges to 3.60 V under
+// STO_CFG LLLH, above the 3.3 V rail, so it cannot go to the pin directly. Enter the measured
+// resistances, then set VSTO_CAL once per board to (multimeter volts on the storage terminal
+// screws) / (volts this sketch prints), measured at the same moment.
+const uint32_t VSTO_R_TOP = 1000000;     // R1, ohms
+const uint32_t VSTO_R_BOTTOM = 1000000;  // R2, ohms
+const float VSTO_CAL = 1.000;
+// R1 >= R2 keeps a full 3.8 V cell at or under 1.9 V on the pin, inside the 2.5 V reference
+static_assert(VSTO_R_TOP >= VSTO_R_BOTTOM, "VSTO_R_TOP must be at least VSTO_R_BOTTOM");
+
 const uint8_t DOWNLINK_PORT = 10;
 const uint8_t CMD_HUMIDITY = 0x01;
 const uint8_t CMD_TEMPERATURE = 0x02;
@@ -111,6 +128,10 @@ const uint8_t CMD_GAS = 0x03;
 //                       so the server does not treat it as "task done".
 //   0x01 / 0x02 / 0x03 - response to a humidity / temperature / gas command.
 //                       Only these mark the sensor as free again on the server.
+// Status packet, 11 bytes, 16-bit values big-endian:
+//   [0] 0x00, [1-2] TVOC ppb, [3-4] eCO2 ppm, [5-6] temperature x100 (C),
+//   [7-8] humidity x100 (%RH), [9-10] storage voltage in mV (0 = not measured).
+// Bytes 0-8 are unchanged, so a decoder that stops at byte 8 keeps working.
 const uint8_t PKT_STATUS = 0x00;
 
 // Sent in place of temperature / humidity when the SHT41 does not answer (decodes as 327.67).
@@ -225,6 +246,37 @@ bool readSensors(int16_t &tempScaled, int16_t &humScaled, uint16_t &tvoc, uint16
   return ok;
 }
 
+// Storage voltage in mV (0 with VSTO_SENSE off). The reference is the internal 2.5 V one, not
+// VDD: the AEM10330 lets the 3.3 V rail wander from 3.15 to 3.34 V (DS v1.5.0 Table 10), and the
+// 2.5 V reference is allowed down to VDD = 3.0 V (ATmega4809 DS Table 32-22). Takes about 3 ms,
+// so call it while the radio is idle.
+uint16_t readVstoMv()
+{
+#if VSTO_SENSE
+  ADC0.CTRLA |= ADC_ENABLE_bm;  // off the rest of the time, see setup()
+  analogReference(INTERNAL2V5);
+  // 8 MHz / 32 = 250 kHz: the core's 125 kHz is under the 200 kHz minimum for 10-bit results
+  // (DS Table 32-26). Longest sampling window, 33 ADC clocks = 132 us, so the 500 kohm divider
+  // can charge the sample-and-hold capacitor even without a cap on the pin.
+  ADC0.CTRLC = (ADC0.CTRLC & ~ADC_PRESC_gm) | ADC_PRESC_DIV32_gc;
+  ADC0.SAMPCTRL = 31;
+  delayMicroseconds(100);  // internal reference start-up is 25 us
+  analogRead(PIN_VSTO);    // the first result after enabling is thrown away
+
+  uint32_t sum = 0;
+  for (uint8_t i = 0; i < 16; i++)
+    sum += analogRead(PIN_VSTO);
+  ADC0.CTRLA &= ~ADC_ENABLE_bm;
+
+  // RES = 1023 x VIN / VREF (DS 29.3.2.5), then undo the divider
+  float pinVolts = sum / 16.0 * 2.5 / 1023.0;
+  float vsto = pinVolts * (VSTO_R_TOP + VSTO_R_BOTTOM) / VSTO_R_BOTTOM * VSTO_CAL;
+  return (uint16_t)(vsto * 1000.0 + 0.5);
+#else
+  return 0;
+#endif
+}
+
 void do_send(osjob_t* j)
 {
   if (LMIC.opmode & OP_TXRXPEND)
@@ -234,12 +286,14 @@ void do_send(osjob_t* j)
     return;
   }
 
+  uint16_t vstoMv = readVstoMv();  // first, while the radio and the sensor rail are both off
+
   int16_t tempScaled, humScaled;
   uint16_t tvoc, eco2;
   if (!readSensors(tempScaled, humScaled, tvoc, eco2))
     DBGLN("SHT41 did not answer, sending 0x7FFF for temperature and humidity");
 
-  uint8_t payload[9];
+  uint8_t payload[11];
   uint8_t len = 0;
 
   if (pendingCommand == CMD_HUMIDITY)
@@ -291,13 +345,17 @@ void do_send(osjob_t* j)
     payload[6] = lowByte(tempScaled);
     payload[7] = highByte(humScaled);
     payload[8] = lowByte(humScaled);
-    len = 9;
+    payload[9] = highByte(vstoMv);
+    payload[10] = lowByte(vstoMv);
+    len = 11;
 
     DBG("Sending status packet: ");
     DBG(tempScaled / 100.0);
     DBG(" C, ");
     DBG(humScaled / 100.0);
-    DBGLN(" %");
+    DBG(" %, storage ");
+    DBG(vstoMv);
+    DBGLN(" mV");
   }
 
   if (LMIC_setTxData2(1, payload, len, 0) != LMIC_ERROR_SUCCESS)
@@ -422,7 +480,7 @@ void setup()
   uint8_t resetFlags = RSTCTRL.RSTFR;
   RSTCTRL.RSTFR = resetFlags;  // flags clear by writing 1
 
-  ADC0.CTRLA &= ~ADC_ENABLE_bm;  // the core enables the ADC; nothing here uses it
+  ADC0.CTRLA &= ~ADC_ENABLE_bm;  // the core enables the ADC; readVstoMv() turns it on only to read
 
   for (uint8_t i = 0; i < sizeof(UNUSED_PINS); i++)
     LowPower.disablePinISC(UNUSED_PINS[i]);
@@ -451,6 +509,11 @@ void setup()
   RTC.PITINTCTRL = RTC_PI_bm;
   while (RTC.PITSTATUS > 0) {}
   RTC.PITCTRLA = RTC_PERIOD_CYC1024_gc | RTC_PITEN_bm;
+
+  // printed at boot too, so calibration does not have to wait for the join
+  DBG("Storage voltage ");
+  DBG(readVstoMv());
+  DBGLN(" mV");
 
   sensorRailOn();
 
