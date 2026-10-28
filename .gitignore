@@ -17,3 +17,6 @@ secrets.h
 
 # plan-execution scratch
 .superpowers/
+
+# journal manuscript and figure sources stay local
+paper/
