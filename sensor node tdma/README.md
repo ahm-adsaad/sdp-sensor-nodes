@@ -20,8 +20,9 @@ whatever its energy. Set it to 0 for real runs, so a task the node cannot afford
 
 ## Sensors: powered per task
 
-- Both sensor headers are used: the SHT41 and the ENS160 are each found on J3 or J4 at boot, and the
-  single TWI is moved to a sensor's header (Wire.swap) before every access.
+- Both sensor headers are used. Nothing is powered at boot: the first task that needs the SHT41 or
+  the ENS160 looks for it on J3, then J4, and the single TWI is moved to a sensor's header
+  (Wire.swap) before every access.
 - Nothing is powered between tasks. Status packets switch no sensor on and carry voltage and energy
   only (temperature / humidity sent as 0x7FFE "not measured", gas status 0xFC).
 - Temperature / humidity task: the SHT41's header is switched on in the reply slot, read, switched off.
@@ -36,8 +37,9 @@ whatever its energy. Set it to 0 for real runs, so a task the node cannot afford
 - After a brown-out reset the node rests in power-down (30 s, doubling up to 8 min) before switching
   anything on, so the storage can recharge.
 - A brown-out is pinned on what was going on: switching J3 on, switching J4 on, or the ENS160 heater.
-  After 3 in a row that part stays off (the rest keeps working); an unexplained run of 3 starts the node
-  without sensors. A power-on, a flash, or the hourly retry clears it.
+  After 3 in a row that part stays off (the rest keeps working); a power-on, a flash, or the hourly
+  retry clears it. An unexplained brown-out (the radio, a low storage) only lengthens the rest: the
+  sensors are off anyway, so it never blocks them.
 - A brown-out during a transmission lowers the stored TX power cap by 2 dB (floor 2 dBm).
 
 ## Bench sketches (`bench/`)
