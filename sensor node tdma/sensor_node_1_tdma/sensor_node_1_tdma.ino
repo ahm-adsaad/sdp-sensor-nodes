@@ -18,6 +18,12 @@
 //    packet goes instead, so the server reassigns it.
 //  - Power-down between slots as before, but timed to the millisecond: the sleep clock is measured
 //    against the main clock at boot (see sleepUntil).
+//  - Sensors are powered only for the task that needs them (see readTask): a temperature or
+//    humidity task switches the SHT41's header on in its reply slot, reads and switches it off; a
+//    gas task switches the ENS160's header on as soon as the task arrives, heats it until the reply
+//    slot one frame (30 s) later, reads and switches it off. Status packets switch nothing on and
+//    carry voltage and energy only. Each sensor is found on J3 or J4 at boot (see selectBus), and
+//    headers are switched on with a pulsed ramp found on the bench (see railRamp).
 // Network behaviour matches heltec_v3_node.ino: ADR off + SF7 after join, downlink
 // loss counter, packet types 0x00 status / 0x01-0x03 command responses. The status packet
 // layout is under PKT_STATUS; the ChirpStack decoder is chirpstack_codec.js one folder up.
@@ -42,7 +48,7 @@
 //  - every frame, joins included, is capped at the stored TX power cap (starts at TX_POWER_DBM);
 //  - the cap learns: a brown-out reset that hits while the radio is transmitting lowers the
 //    cap by TX_POWER_STEP_DB (floor TX_POWER_MIN_DBM) and the new cap is kept in EEPROM;
-//  - the ENS160 (about 29 mA while gas sensing) sleeps until the join is accepted;
+//  - the ENS160 (about 29 mA while gas sensing) is only powered for gas tasks, never during a join;
 //  - the OTAA DevNonce continues from EEPROM across resets, so ChirpStack never sees a
 //    JoinRequest with a nonce it already used (LMIC alone restarts from a random value).
 //
@@ -63,13 +69,10 @@
 
 #define DEBUG 1           // 0 for battery runs: no serial output and the UART pins are parked
 #define USE_ENS160 1      // 0 = no ENS160 on the bus: gas bytes carry 0 ppb / 400 ppm / status 0xFF
-#define RAIL_ALWAYS_ON 0  // 1 = keep VCC_SENS_A on between readings (see sensorRailOff)
 #define VSTO_SENSE 1      // 0 = the storage divider on H5 pin 1 is not fitted, status packets send 0 mV
 #define NODE_NUMBER 1     // sensor number on the server (num_to_eui); picks the default slot
-
-// With the ENS160 fitted the rail stays on: gas sensing restarts its 3 min warm-up after every
-// power cycle, so switching it per reading would never give a valid value at a 60 s interval.
-#define SWITCH_RAIL (!RAIL_ALWAYS_ON && !USE_ENS160)
+#define TEST_IGNORE_ENERGY 1  // TEST ONLY (2026-10-28): never skip a task for lack of energy; set 0 again
+                              // after the bench tests. The real energy is still reported.
 
 #if USE_ENS160
 #include "ens160_min.h"
@@ -99,7 +102,8 @@ Adafruit_SHT4x sht4 = Adafruit_SHT4x();
 
 #if USE_ENS160
 bool ens160Found = false;    // answered its part id at boot
-bool ens160Sensing = false;  // in gas-sensing mode, which only starts after the join
+bool gasWarming = false;     // powered and heating for a gas task, read in the next slot (gasStart)
+uint32_t gasSince = 0;       // millis() when it started heating
 #endif
 
 void os_getArtEui(u1_t* buf) { memcpy_P(buf, APPEUI, 8); }
@@ -108,17 +112,28 @@ void os_getDevKey(u1_t* buf) { memcpy_P(buf, APPKEY, 16); }
 
 // Board pins (PCB rev 2; the radio pins, PD6 and PD7 are the same on rev 1)
 const uint8_t PIN_RAIL_A = PIN_PD6;  // U8 ENA: VCC_SENS_A on J3, I2C bus A (PA2/PA3)
-const uint8_t PIN_RAIL_B = PIN_PC1;  // U8 ENB: VCC_SENS_B on J4, I2C bus B - unused, held off
+const uint8_t PIN_RAIL_B = PIN_PC1;  // U8 ENB: VCC_SENS_B on J4, I2C bus B (PC2/PC3)
 const uint8_t PIN_LED = PIN_PD7;     // never use LED_BUILTIN: MegaCoreX maps it to PA7 = radio NSS
 const uint8_t PIN_VSTO = PIN_PD0;    // H5 pin 1 = AIN0: storage voltage through the R1/R2 divider
 
-// Pins this sketch does not drive: PMIC status PB2-PB4 (not read yet), I2C bus B on PC2/PC3,
-// header H5 (PD0-PD4, PC7) and the unconnected ones. Their digital input buffers are switched
-// off so a floating level cannot draw current. PD0 stays on the list: the ADC does not use the
-// digital buffer, and a buffer sitting at half the storage voltage would draw current.
+// Both sensor headers are used. The ATmega4809 has one TWI, which reaches J3 on its default pins
+// (PA2/PA3) or J4 on the alternate ones (PC2/PC3, Wire.swap(1)). Both rails go on together and
+// setup() looks for each sensor on both headers, so it does not matter which one is plugged where;
+// selectBus() moves the TWI to a sensor's header before every access to it.
+const uint8_t BUS_J3 = 0;  // Wire.swap() states
+const uint8_t BUS_J4 = 1;
+uint8_t currentBus = 0xFF;  // none: Wire not started
+uint8_t shtBus = BUS_J3;
+uint8_t ensBus = BUS_J3;
+bool shtFound = false;
+
+// Pins this sketch does not drive: PMIC status PB2-PB4 (not read yet), header H5 (PD0-PD4, PC7)
+// and the unconnected ones. Their digital input buffers are switched off so a floating level
+// cannot draw current. PD0 stays on the list: the ADC does not use the digital buffer, and a
+// buffer sitting at half the storage voltage would draw current.
 const uint8_t UNUSED_PINS[] = {
   PIN_PB0, PIN_PB1, PIN_PB2, PIN_PB3, PIN_PB4, PIN_PB5,
-  PIN_PC0, PIN_PC2, PIN_PC3, PIN_PC4, PIN_PC5, PIN_PC6, PIN_PC7,
+  PIN_PC0, PIN_PC4, PIN_PC5, PIN_PC6, PIN_PC7,
   PIN_PD0, PIN_PD1, PIN_PD2, PIN_PD3, PIN_PD4, PIN_PD5,
   PIN_PE0, PIN_PE1, PIN_PE2, PIN_PE3, PIN_PF0, PIN_PF1,
 };
@@ -195,11 +210,31 @@ struct BootTrace
   uint32_t magic;
   uint8_t phase;
   uint8_t brownOutRun;  // brown-out resets in a row, see brownOutBackOff()
+  uint8_t culprits;     // CULPRIT_* bits: what browned the node out and stays off
+  uint8_t gasOn;        // the ENS160 hot plate is heating (gas sensing)
+  uint8_t fails[3];     // brown-outs in a row pinned on J3, J4, the gas heater (see CULPRIT_AFTER)
 };
 const uint32_t TRACE_MAGIC = 0x54524143;  // "TRAC"
 const uint8_t PHASE_IDLE = 0;
-const uint8_t PHASE_TX = 1;  // from EV_TXSTART until the radio is done transmitting
+const uint8_t PHASE_TX = 1;      // from EV_TXSTART until the radio is done transmitting
+const uint8_t PHASE_RAIL_A = 2;  // switching on VCC_SENS_A (J3) and talking to what is on it
+const uint8_t PHASE_RAIL_B = 3;  // switching on VCC_SENS_B (J4) and talking to what is on it
 BootTrace bootTrace __attribute__((section(".noinit")));
+uint8_t bootPrevPhase = PHASE_IDLE;  // the phase the last reset hit, before this boot overwrites it
+bool bootPrevValid = false;
+
+// Per-sensor fallback (2026-10-28): switching both rails on browned the node out even with the
+// storage at 3.7 V, and the back-off below then turned ALL sensors off although the SHT41 on J3
+// had worked alone. Now a brown-out is pinned on what was happening: switching J3 on, switching
+// J4 on, or the ENS160 heating (29 mA, also during transmissions). Only that stays off, and only
+// after CULPRIT_AFTER such brown-outs in a row: switching J4 on is marginal, a sensor-only bench
+// test browned out twice and got through on the third try. A start that gets through clears the
+// count; a power-on, a flash, or the hourly retry clears everything.
+const uint8_t CULPRIT_RAIL_A = 0x01;
+const uint8_t CULPRIT_RAIL_B = 0x02;
+const uint8_t CULPRIT_GAS = 0x04;
+const uint8_t CULPRIT_AFTER = 3;
+const char* const CULPRIT_NAMES[3] = { "J3 (switching it on)", "J4 (switching it on)", "ENS160 gas sensing (its heater)" };
 
 uint8_t resetFlags = 0;  // RSTCTRL.RSTFR at boot: 0x01 power-on, 0x02 brown-out, 0x08 watchdog
 
@@ -258,6 +293,8 @@ const uint8_t TDMA_DOWNLINK_LEN = 6;
 //                       so the server does not treat it as "task done".
 //   0x01 / 0x02 / 0x03 - response to a humidity / temperature / gas command.
 //                       Only these mark the sensor as free again on the server.
+// Status packets switch no sensor on (sensors are powered for tasks only): their temperature and
+// humidity are NOT_MEASURED, TVOC / eCO2 0 and the ENS160 status ENS_NOT_MEASURED.
 // Status packet, 15 bytes, 16-bit values big-endian:
 //   [0] 0x00, [1-2] TVOC ppb, [3-4] eCO2 ppm, [5-6] temperature x100 (C),
 //   [7-8] humidity x100 (%RH), [9-10] storage voltage in mV (0 = not measured),
@@ -272,9 +309,12 @@ const uint8_t PKT_STATUS = 0x00;
 
 // Sent in place of temperature / humidity when the SHT41 does not answer (decodes as 327.67).
 const int16_t NO_READING = 0x7FFF;
+// Sent in place of temperature / humidity when they were not measured: status packets (decodes as 327.66).
+const int16_t NOT_MEASURED = 0x7FFE;
 
 // ENS160 status byte in the packets: 0..3 is the sensor's own validity flag (0 normal,
 // 1 warm-up, 2 initial start-up, 3 invalid output); the rest are the node's codes.
+const uint8_t ENS_NOT_MEASURED = 0xFC;  // no gas reading asked for: status packets
 const uint8_t ENS_NO_SAMPLE = 0xFD;  // sensing, but no fresh sample yet (first second after start)
 const uint8_t ENS_NO_ANSWER = 0xFE;  // found at boot, no I2C answer now
 const uint8_t ENS_ABSENT = 0xFF;     // not fitted, not found at boot, or not started yet
@@ -288,7 +328,7 @@ struct Reading
   uint8_t aqi;         // AQI-UBA 1..5, 0 = none
   uint8_t ensStatus;
 };
-bool readSensors(Reading &r);  // declared here so the IDE's generated prototype does not land above the struct
+void readTask(uint8_t cmd, Reading &r);  // declared here so the IDE's generated prototype does not land above the struct
 
 uint8_t pendingCommand = 0;
 bool sleepPending = false;  // an uplink cycle has finished and nothing else is queued
@@ -475,7 +515,8 @@ void loadSettings()
 // reported in the status packet's reset flags but do not touch the cap.
 void learnFromBrownOut()
 {
-  bool duringTx = bootTrace.magic == TRACE_MAGIC && bootTrace.phase == PHASE_TX;
+  // the phase as the reset left it: by now the sensor start-up has overwritten bootTrace.phase
+  bool duringTx = bootPrevValid && bootPrevPhase == PHASE_TX;
   bootTrace.magic = TRACE_MAGIC;
   bootTrace.phase = PHASE_IDLE;
 
@@ -504,22 +545,72 @@ void learnFromBrownOut()
 void brownOutBackOff()
 {
   bool brownOut = (resetFlags & RSTCTRL_BORF_bm) && !(resetFlags & RSTCTRL_PORF_bm);
-  if (bootTrace.magic != TRACE_MAGIC || !brownOut)
+  bootPrevValid = bootTrace.magic == TRACE_MAGIC;
+  bootPrevPhase = bootTrace.phase;
+
+  // a power-on or a flash starts over: every sensor gets tried again
+  if (!bootPrevValid || (resetFlags & (RSTCTRL_PORF_bm | RSTCTRL_UPDIRF_bm)))
+  {
+    bootTrace.culprits = 0;
+    bootTrace.fails[0] = bootTrace.fails[1] = bootTrace.fails[2] = 0;
+  }
+
+  // pin the brown-out on what was going on, if anything sensor-related; that part stays off
+  // once it has done it CULPRIT_AFTER times in a row
+  uint8_t culprit = 0, idx = 0;
+  if (bootPrevValid && brownOut)
+  {
+    if (bootPrevPhase == PHASE_RAIL_A)
+      culprit = CULPRIT_RAIL_A, idx = 0;
+    else if (bootPrevPhase == PHASE_RAIL_B)
+      culprit = CULPRIT_RAIL_B, idx = 1;
+    else if (bootTrace.gasOn)
+      culprit = CULPRIT_GAS, idx = 2;
+  }
+  if (culprit)
+  {
+    if (bootTrace.fails[idx] < 255)
+      bootTrace.fails[idx]++;
+    DBG("Brown-out pinned on ");
+    DBG(CULPRIT_NAMES[idx]);
+    DBG(", ");
+    DBG(bootTrace.fails[idx]);
+    DBG(" of ");
+    DBG(CULPRIT_AFTER);
+    DBGLN(bootTrace.fails[idx] >= CULPRIT_AFTER ? ": leaving it off" : ": will try again");
+    if (bootTrace.fails[idx] >= CULPRIT_AFTER)
+      bootTrace.culprits |= culprit;
+  }
+  bootTrace.gasOn = 0;
+
+  // an unexplained brown-out counts towards the all-sensors-off back-off; an explained one does
+  // not, that sensor is simply left off
+  if (!bootPrevValid || !brownOut)
     bootTrace.brownOutRun = 0;
-  else if (bootTrace.brownOutRun < 255)
+  else if (!culprit && bootTrace.brownOutRun < 255)
     bootTrace.brownOutRun++;
   // Valid from here on: a boot that browns out before learnFromBrownOut() (at the sensor rail,
   // say) must still leave a trace the next boot can count (seen 2026-10-28: it never did).
-  if (bootTrace.magic != TRACE_MAGIC)
+  if (!bootPrevValid)
   {
     bootTrace.magic = TRACE_MAGIC;
     bootTrace.phase = PHASE_IDLE;
+    bootTrace.gasOn = 0;
   }
 
-  uint8_t run = bootTrace.brownOutRun;
+  if (bootTrace.culprits)
+  {
+    DBG("Left off after brown-outs:");
+    if (bootTrace.culprits & CULPRIT_RAIL_A) DBG(" J3 (switching it on)");
+    if (bootTrace.culprits & CULPRIT_RAIL_B) DBG(" J4 (switching it on)");
+    if (bootTrace.culprits & CULPRIT_GAS) DBG(" ENS160 gas sensing (its heater)");
+    DBGLN(" - power-cycle to try again");
+  }
+
+  uint8_t run = culprit ? 1 : bootTrace.brownOutRun;  // an explained one still rests once
   if (run == 0)
     return;
-  sensorsOff = run >= BROWNOUT_SENSORS_OFF;
+  sensorsOff = bootTrace.brownOutRun >= BROWNOUT_SENSORS_OFF;
   uint32_t wait = (uint32_t)BROWNOUT_WAIT_S << (run - 1 < 5 ? run - 1 : 5);
   if (wait > BROWNOUT_WAIT_MAX_S)
     wait = BROWNOUT_WAIT_MAX_S;
@@ -543,120 +634,208 @@ void brownOutBackOff()
   }
 }
 
-// Switching VCC_SENS_A straight on browned the node out within half a millisecond, even with the
-// storage at 3.6 V (2026-10-28): the breakout boards' input capacitors charge at once and pull
-// more than the AEM10330's LOAD output gives (60-76 mA). So the load switch is pulsed first:
-// short on-times growing from 2 to 50 us, 100 us off in between, about 15 ms in all, which
-// charges those capacitors a little at a time before the switch stays on.
-void sensorRailSoftStart()
+// Moves the TWI to header J3 or J4. Wire.swap() only takes effect in Wire.begin().
+void selectBus(uint8_t bus)
 {
-  for (uint8_t onUs = 2; onUs <= 50; onUs++)
-  {
-    for (uint8_t i = 0; i < 2; i++)
-    {
-      digitalWriteFast(PIN_RAIL_A, HIGH);
-      delayMicroseconds(onUs);
-      digitalWriteFast(PIN_RAIL_A, LOW);
-      delayMicroseconds(100);
-    }
-  }
-  digitalWriteFast(PIN_RAIL_A, HIGH);
-}
-
-void sensorRailOn()
-{
-  sensorRailSoftStart();
-  delay(5);  // load-switch soft start and SHT41 power-up (1 ms max)
-  LowPower.enablePinISC(PIN_PA2);
-  LowPower.enablePinISC(PIN_PA3);
-  Wire.begin();
-}
-
-// On rev 2 the bus pull-ups R9-R12 sit on the always-on 3V3, so a sensor whose rail is off is
-// back-fed through SDA/SCL (estimated 0.3-0.5 mA, not measured). Whether switching the rail off
-// beats leaving it on (power LED and regulator on the breakout) needs a PPK2 measurement of both.
-void sensorRailOff()
-{
+  if (bus == currentBus)
+    return;
   Wire.end();
-  LowPower.disablePinISC(PIN_PA2);  // also clears the internal pull-ups Wire.begin() set
-  LowPower.disablePinISC(PIN_PA3);
-  digitalWriteFast(PIN_RAIL_A, LOW);
+  Wire.swap(bus);
+  Wire.begin();
+  currentBus = bus;
+}
+
+// ---- Sensor power, per task ----
+// Switch-on ramp. The MIC94069 ramps its output over about 800 us by itself and drains it while
+// off, yet a plain switch-on of the ENS160 board browned the node out every time (36 of 36 bench
+// trials, 2026-10-28, storage 3.2 V), on J4 or J3, in any order or gap. Pulsing the enable with
+// on-times that grow from RAMP_FROM_US to RAMP_TO_US in RAMP_STEP_US, RAMP_OFF_US off in between
+// (about 70 ms in all), charges the board a little at a time: step 5 us and off 20 us each passed
+// 5 of 5 trials with the gas heater running, step 10 / off 50 passed 8 of 10, step 25 none; the
+// two together (used here) passed 8 of 8 at 3.04 V storage, the lowest of the whole test.
+// sensor node tdma/bench/sequence_test/ in the repo has the bench sketch and the full results. Used
+// for both headers.
+const uint16_t RAMP_FROM_US = 50;
+const uint16_t RAMP_TO_US = 800;
+const uint8_t RAMP_STEP_US = 5;
+const uint8_t RAMP_OFF_US = 20;
+
+// The enable goes in as its port's OUT register and bit (digitalWriteFast() needs a constant
+// pin): VPORTD.OUT / PIN6_bm is PIN_RAIL_A (PD6, J3), VPORTC.OUT / PIN1_bm is PIN_RAIL_B (PC1, J4).
+void railRamp(volatile uint8_t &out, uint8_t mask)
+{
+  for (uint16_t on = RAMP_FROM_US; on <= RAMP_TO_US; on += RAMP_STEP_US)
+  {
+    out |= mask;
+    delayMicroseconds(on);
+    out &= ~mask;
+    delayMicroseconds(RAMP_OFF_US);
+  }
+  out |= mask;
+}
+
+// Powers the header a sensor sits on and points the TWI at it; false when that header was left off
+// after brown-outs. bootTrace.phase stays on the header until headerOff(), so a brown-out while
+// talking to its sensor is pinned on it too.
+bool headerOn(uint8_t bus)
+{
+  bool j3 = bus == BUS_J3;
+  if (bootTrace.culprits & (j3 ? CULPRIT_RAIL_A : CULPRIT_RAIL_B))
+    return false;
+  bootTrace.phase = j3 ? PHASE_RAIL_A : PHASE_RAIL_B;
+  if (j3)
+    railRamp(VPORTD.OUT, PIN6_bm);
+  else
+    railRamp(VPORTC.OUT, PIN1_bm);
+  delay(5);  // SHT41 power-up is 1 ms max
+  LowPower.enablePinISC(j3 ? PIN_PA2 : PIN_PC2);
+  LowPower.enablePinISC(j3 ? PIN_PA3 : PIN_PC3);
+  currentBus = 0xFF;
+  selectBus(bus);
+  return true;
+}
+
+// On rev 2 the bus pull-ups R9-R12 sit on the always-on 3V3, so a sensor whose header is off is
+// back-fed through SDA/SCL (estimated 0.3-0.5 mA, not measured). The header came up and did its
+// work, so its brown-out count starts over.
+void headerOff(uint8_t bus)
+{
+  bool j3 = bus == BUS_J3;
+  Wire.end();
+  currentBus = 0xFF;
+  LowPower.disablePinISC(j3 ? PIN_PA2 : PIN_PC2);  // also clears the internal pull-ups Wire.begin() set
+  LowPower.disablePinISC(j3 ? PIN_PA3 : PIN_PC3);
+  if (j3)
+    digitalWriteFast(PIN_RAIL_A, LOW);
+  else
+    digitalWriteFast(PIN_RAIL_B, LOW);
+  bootTrace.phase = PHASE_IDLE;
+  bootTrace.fails[j3 ? 0 : 1] = 0;
 }
 
 #if USE_ENS160
-// Deep sleep -> idle -> gas sensing (deep sleep only exits to idle). The hot plate then needs
-// about 3 min before the readings mean anything (status 1, warm-up); a sensor in its first
-// hour of life reports 2 (initial start-up) instead.
-void ens160Start()
+// A gas task arrived: power the ENS160 and start its heater now, so it has heated for a whole
+// frame (30 s) by the reply slot. Its readings only count as valid after about 3 min (status 1,
+// warm-up, until then); the 30 s value is sent with that status, as decided for the gas task.
+void gasStart()
 {
-  if (!ens160Found || ens160Sensing)
+  if (!ens160Found || gasWarming)
     return;
-  if (!ens160SetMode(ENS160_OPMODE_IDLE))
+  if (bootTrace.culprits & CULPRIT_GAS)
   {
-    DBGLN("ENS160 did not answer the wake-up");
+    DBGLN("ENS160 left off: its heater browned the node out before");
     return;
   }
-  delay(10);
+  if (!headerOn(ensBus))
+  {
+    DBGLN("ENS160 header left off after brown-outs");
+    return;
+  }
+  ens160SetMode(ENS160_OPMODE_RESET);
+  delay(100);
+  watchdogKick();
+  bootTrace.phase = PHASE_IDLE;  // the header came up: from here a brown-out is the heater's
+  bootTrace.gasOn = 1;
   uint8_t mode = 0xFF;
-  ens160Sensing = ens160SetMode(ENS160_OPMODE_STANDARD) && ens160GetMode(mode) && mode == ENS160_OPMODE_STANDARD;
-  DBGLN(ens160Sensing ? "ENS160 gas sensing started, warming up" : "ENS160 did not enter gas-sensing mode");
+  bool ok = ens160SetMode(ENS160_OPMODE_IDLE);
+  delay(10);
+  ok = ok && ens160SetMode(ENS160_OPMODE_STANDARD) && ens160GetMode(mode) && mode == ENS160_OPMODE_STANDARD;
+  if (!ok)
+  {
+    DBGLN("ENS160 did not start gas sensing");
+    bootTrace.gasOn = 0;
+    headerOff(ensBus);
+    return;
+  }
+  gasWarming = true;
+  gasSince = millis();
+  DBGLN("ENS160 on and heating for the gas task, read in the next slot");
+}
+
+void gasStop()
+{
+  if (!gasWarming)
+    return;
+  gasWarming = false;
+  bootTrace.gasOn = 0;
+  headerOff(ensBus);
 }
 #endif
 
-// Fresh SHT41 reading, plus the ENS160's latest sample when it is sensing. Returns false when
-// the SHT41 did not answer; temperature and humidity are then NO_READING. The gas fields
-// always hold something the server can decode (see ENS_ABSENT and friends).
-bool readSensors(Reading &r)
+// The reading a task asks for. cmd 0 (a status packet) switches nothing on: every sensor field is
+// NOT_MEASURED / ENS_NOT_MEASURED. Temperature and humidity: the SHT41's header is switched on,
+// read and off again. Gas: the ENS160 has been heating since the task arrived (gasStart); it is
+// read and switched off. A sensor that did not answer sends NO_READING / ENS_ABSENT and friends.
+void readTask(uint8_t cmd, Reading &r)
 {
-  if (sensorsOff)
+  r.tempScaled = NOT_MEASURED;
+  r.humScaled = NOT_MEASURED;
+  r.tvoc = 0;
+  r.eco2 = 0;
+  r.aqi = 0;
+  r.ensStatus = ENS_NOT_MEASURED;
+
+  if (cmd == CMD_HUMIDITY || cmd == CMD_TEMPERATURE)
   {
-    // booted without the sensor rail (brown-out back-off): the bus is not even started
     r.tempScaled = NO_READING;
     r.humScaled = NO_READING;
-    r.tvoc = 0;
-    r.eco2 = 400;
-    r.aqi = 0;
-    r.ensStatus = ENS_ABSENT;
-    return false;
-  }
-
-#if SWITCH_RAIL
-  sensorRailOn();
-#endif
-
-  sensors_event_t humEvent, tempEvent;
-  bool ok = sht4.getEvent(&humEvent, &tempEvent);
-  r.tempScaled = ok ? (int16_t)(tempEvent.temperature * 100) : NO_READING;
-  r.humScaled = ok ? (int16_t)(humEvent.relative_humidity * 100) : NO_READING;
-
-  // the values the server already got when no gas sensor is fitted
-  r.tvoc = 0;
-  r.eco2 = 400;
-  r.aqi = 0;
-  r.ensStatus = ENS_ABSENT;
-
+    if (sensorsOff || !shtFound)
+      return;
 #if USE_ENS160
-  if (ens160Sensing)
+    bool shared = gasWarming && ensBus == shtBus;  // already powered for a gas task
+#else
+    bool shared = false;
+#endif
+    if (!shared && !headerOn(shtBus))
+    {
+      DBGLN("SHT41 header left off after brown-outs");
+      return;
+    }
+    selectBus(shtBus);
+    sensors_event_t humEvent, tempEvent;
+    if (sht4.getEvent(&humEvent, &tempEvent))
+    {
+      r.tempScaled = (int16_t)(tempEvent.temperature * 100);
+      r.humScaled = (int16_t)(humEvent.relative_humidity * 100);
+    }
+    else
+      DBGLN("SHT41 did not answer");
+    if (!shared)
+      headerOff(shtBus);
+  }
+  else if (cmd == CMD_GAS)
   {
-    if (ok)
-      ens160SetCompensation(tempEvent.temperature, humEvent.relative_humidity);
-
-    uint8_t status;
-    if (!ens160ReadStatus(status))
-      r.ensStatus = ENS_NO_ANSWER;
-    else if (!(status & ENS160_STATUS_NEWDAT))
-      r.ensStatus = ENS_NO_SAMPLE;  // a sample arrives every second once sensing; only the first cycle sees this
+    r.eco2 = 400;  // the values the server already got when no gas sensor is fitted
+    r.ensStatus = ENS_ABSENT;
+#if USE_ENS160
+    if (!gasWarming)
+      return;
+    selectBus(ensBus);
+    uint8_t status = 0;
+    bool fresh = false;
+    for (uint8_t i = 0; i < 15 && !fresh; i++)  // a sample comes every second
+    {
+      if (!ens160ReadStatus(status))
+        break;
+      fresh = status & ENS160_STATUS_NEWDAT;
+      if (!fresh)
+        delay(100);
+    }
+    if (!fresh)
+      r.ensStatus = ENS_NO_SAMPLE;
     else if (ens160ReadData(r.aqi, r.tvoc, r.eco2))
+    {
       r.ensStatus = (status & ENS160_STATUS_VALIDITY_gm) >> ENS160_STATUS_VALIDITY_gp;
+      bootTrace.fails[2] = 0;  // the heater ran a whole frame without a brown-out
+    }
     else
       r.ensStatus = ENS_NO_ANSWER;
+    DBG("ENS160 heated ");
+    DBG((millis() - gasSince) / 1000);
+    DBGLN(" s");
+    gasStop();
+#endif
   }
-#endif
-
-#if SWITCH_RAIL
-  sensorRailOff();
-#endif
-  return ok;
 }
 
 // Storage voltage in mV (0 with VSTO_SENSE off). The reference is the internal 2.5 V one, not
@@ -705,7 +884,7 @@ void do_send(osjob_t* j)
 
   // Not enough energy for the task: skip it and send a status packet; the server sees the low
   // energy and gives the task to another node.
-  if (pendingCommand != 0 && energy < taskCost(pendingCommand))
+  if (!TEST_IGNORE_ENERGY && pendingCommand != 0 && energy < taskCost(pendingCommand))
   {
     tasksSkipped++;
     DBG("Skipping task 0x");
@@ -714,12 +893,15 @@ void do_send(osjob_t* j)
     DBG(taskCost(pendingCommand));
     DBG(", energy ");
     DBGLN(energy);
+#if USE_ENS160
+    if (pendingCommand == CMD_GAS)
+      gasStop();
+#endif
     pendingCommand = 0;
   }
 
   Reading r;
-  if (!readSensors(r))
-    DBGLN("SHT41 did not answer, sending 0x7FFF for temperature and humidity");
+  readTask(pendingCommand, r);
 
   uint8_t payload[17];
   uint8_t len = 0;
@@ -768,7 +950,7 @@ void do_send(osjob_t* j)
   }
   else
   {
-    // No command pending: send a status packet (full reading)
+    // No command pending: a status packet, voltage and energy only (sensors are for tasks)
     payload[0] = PKT_STATUS;
     payload[1] = highByte(r.tvoc);
     payload[2] = lowByte(r.tvoc);
@@ -786,19 +968,7 @@ void do_send(osjob_t* j)
     payload[14] = resetFlags;
     len = 15;
 
-    DBG("Sending status packet: ");
-    DBG(r.tempScaled / 100.0);
-    DBG(" C, ");
-    DBG(r.humScaled / 100.0);
-    DBG(" %, TVOC ");
-    DBG(r.tvoc);
-    DBG(" ppb, eCO2 ");
-    DBG(r.eco2);
-    DBG(" ppm, AQI ");
-    DBG(r.aqi);
-    DBG(", ENS160 status 0x");
-    DBG(r.ensStatus, HEX);
-    DBG(", storage ");
+    DBG("Sending status packet (no sensors switched on): storage ");
     DBG(vstoMv);
     DBG(" mV, TX cap ");
     DBG(settings.txPowerCap);
@@ -855,9 +1025,6 @@ void onEvent(ev_t ev)
       // Uplink channels are limited to 868.1/868.3/868.5 by ChirpStack (no CFList).
       LMIC_setAdrMode(0);
       LMIC_setDrTxpow(DR_SF7, settings.txPowerCap);
-#if USE_ENS160
-      ens160Start();  // kept asleep until now so its 29 mA never overlaps a JoinRequest
-#endif
       // Free-run on the defaults until the first downlink brings the schedule: start in this
       // node's own slot of the current frame.
       nextSlotAt = millis() + 100 + (uint32_t)slotIndex * DEFAULT_SLOT_MS;
@@ -942,6 +1109,10 @@ void onEvent(ev_t ev)
           DBGLN(cmd, HEX);
           if (cmd == CMD_HUMIDITY || cmd == CMD_TEMPERATURE || cmd == CMD_GAS)
             pendingCommand = cmd;  // answered in the next slot
+#if USE_ENS160
+          if (cmd == CMD_GAS)
+            gasStart();  // heat from now until the reply slot
+#endif
           else if (cmd == CMD_RESET_ENERGY)
             DBGLN("  battery refill ignored: this node reports its real energy");
           applySchedule(d, txStartedAt);
@@ -953,8 +1124,8 @@ void onEvent(ev_t ev)
         nextSlotAt += frameMs;  // no schedule this time: keep the frame going on the local clock
       if (dataFrameInFlight && !sensorsOff && goodUplinks < GOOD_UPLINKS && ++goodUplinks == GOOD_UPLINKS)
       {
-        bootTrace.brownOutRun = 0;  // the storage carries the sensors and the radio: back-off over
-        DBGLN("  running steadily with the sensors on: brown-out count cleared");
+        bootTrace.brownOutRun = 0;  // the storage carries the node: back-off over
+        DBGLN("  running steadily: brown-out count cleared");
       }
       dataFrameInFlight = false;
 
@@ -1049,38 +1220,39 @@ void setup()
   }
   else
   {
-    sensorRailOn();
-
-#if USE_ENS160
-    ens160Found = ens160Probe();
-    if (ens160Found)
+    // look for each sensor on J3, then on J4, one header powered at a time and switched off again
+    // (a header left off after brown-outs is skipped)
+    for (uint8_t bus = BUS_J3; bus <= BUS_J4; bus++)
     {
-      DBG("ENS160 found at 0x");
-      DBGLN(ens160Address(), HEX);
-      // Reset it, then park it in deep sleep (about 10 uA) until the join is through: gas
-      // sensing draws about 29 mA, which the LOAD rail cannot spare next to a JoinRequest.
-      ens160SetMode(ENS160_OPMODE_RESET);
-      delay(100);
+      if (!headerOn(bus))
+        continue;
       watchdogKick();
-      if (!ens160SetMode(ENS160_OPMODE_DEEP_SLEEP))
-        DBGLN("ENS160 did not answer after reset");
-    }
-    else
-      DBGLN("Could not find ENS160, check wiring!");
+#if USE_ENS160
+      if (!ens160Found && ens160Probe())
+      {
+        ens160Found = true;
+        ensBus = bus;
+        DBG("ENS160 found at 0x");
+        DBG(ens160Address(), HEX);
+        DBGLN(bus == BUS_J3 ? " on J3" : " on J4");
+      }
 #endif
-
-    if (!sht4.begin())
-      DBGLN("Could not find SHT41, check wiring!");
-    else
-    {
-      DBGLN("SHT41 found!");
-      sht4.setPrecision(SHT4X_HIGH_PRECISION);
-      sht4.setHeater(SHT4X_NO_HEATER);
+      if (!shtFound && sht4.begin())
+      {
+        shtFound = true;
+        shtBus = bus;
+        DBGLN(bus == BUS_J3 ? "SHT41 found on J3" : "SHT41 found on J4");
+        sht4.setPrecision(SHT4X_HIGH_PRECISION);
+        sht4.setHeater(SHT4X_NO_HEATER);
+      }
+      headerOff(bus);  // powered again only for a task
     }
-
-#if SWITCH_RAIL
-    sensorRailOff();
+#if USE_ENS160
+    if (!ens160Found)
+      DBGLN("Could not find ENS160 on J3 or J4, check wiring!");
 #endif
+    if (!shtFound)
+      DBGLN("Could not find SHT41 on J3 or J4, check wiring!");
   }
 
   os_init();
@@ -1108,8 +1280,10 @@ void loop()
   watchdogKick();
   os_runloop_once();
 
-  if (sensorsOff && sleepPending && !lmicTxBusy() && millis() > SENSOR_RETRY_MS)
+  if ((sensorsOff || bootTrace.culprits) && sleepPending && !lmicTxBusy() && millis() > SENSOR_RETRY_MS)
   {
+    bootTrace.culprits = 0;  // try every sensor again
+    bootTrace.brownOutRun = 0;
     // running without sensors for an hour: restart to try them again (a software reset does
     // not count as a brown-out, so the first try comes without a wait)
     DBGLN("Trying the sensors again: software reset");
