@@ -816,15 +816,20 @@ void do_send(osjob_t* j)
   DBG(vstoMv);
   DBGLN(" mV)");
 
+  // Set before LMIC_setTxData2: LMIC starts the radio inside that call when the duty cycle allows,
+  // so EV_TXSTART (which stamps txStartedAt) fires before it returns. Set after, the stamp was
+  // skipped and every slot correction was applied to a stale time (seen 2026-10-28: uplinks 11-15 s
+  // off where the server asked for a full frame).
+  dataFrameInFlight = true;
   if (LMIC_setTxData2(1, payload, len, 0) != LMIC_ERROR_SUCCESS)
   {
+    dataFrameInFlight = false;
     // keep pendingCommand and stay awake: retry shortly rather than sleeping a whole frame
     DBGLN("LMIC_setTxData2 failed, retrying in 1 s");
     os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(1), do_send);
     return;
   }
 
-  dataFrameInFlight = true;
   slotsUsed++;
   pendingCommand = 0;
 }
