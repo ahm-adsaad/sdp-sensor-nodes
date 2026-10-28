@@ -27,6 +27,14 @@
 //  - the ENS160 (about 29 mA while gas sensing) sleeps until the join is accepted;
 //  - the OTAA DevNonce continues from EEPROM across resets, so ChirpStack never sees a
 //    JoinRequest with a nonce it already used (LMIC alone restarts from a random value).
+//
+// Freeze fix (2026-10-20). After a downlink that carries MAC commands, LMIC queues its own uplink
+// with the MAC answers (OP_POLL), and it only transmits while loop() keeps running. The old code
+// checked OP_TXRXPEND alone, so it went back to sleep, or called LMIC_setTxData2, got
+// LMIC_ERROR_TX_BUSY and slept a whole cycle; the board stopped sending for good (seen on node 1).
+// lmicTxBusy() checks OP_TXRXPEND | OP_TXDATA | OP_POLL | OP_JOINING: do_send() waits and retries
+// every 1 s while it is set, a failed LMIC_setTxData2 retries in 1 s instead of sleeping, and
+// loop() only sleeps once it is clear.
 // The OTAA keys are in secrets.h next to this file, which is kept out of git.
 #include <Wire.h>
 #include <EEPROM.h>
@@ -212,6 +220,15 @@ bool readSensors(Reading &r);  // declared here so the IDE's generated prototype
 
 uint8_t pendingCommand = 0;
 bool sleepPending = false;  // an uplink cycle has finished and nothing else is queued
+
+// LMIC has a frame queued or on air: its own uplink carrying MAC answers (OP_POLL, queued after a
+// downlink with MAC commands), a join, or our data. LMIC only sends a queued frame while loop() is
+// awake, so sleeping or starting a new send in this state deadlocks: LMIC_setTxData2 keeps failing
+// with LMIC_ERROR_TX_BUSY and the board sleeps again before LMIC can transmit (seen 2026-10-20).
+static bool lmicTxBusy()
+{
+  return (LMIC.opmode & (OP_TXRXPEND | OP_TXDATA | OP_POLL | OP_JOINING)) != 0;
+}
 
 // Downlink loss tracking (same idea as the Heltec sketch): the network numbers
 // every downlink, so a jump in the downlink counter means frames were missed.
@@ -439,10 +456,11 @@ uint16_t readVstoMv()
 
 void do_send(osjob_t* j)
 {
-  if (LMIC.opmode & OP_TXRXPEND)
+  if (lmicTxBusy())
   {
-    DBGLN("OP_TXRXPEND, not sending");
-    os_setTimedCallback(j, os_getTime() + ms2osticks(200), do_send);
+    // let LMIC send what it has queued first; EV_TXCOMPLETE calls do_send again for a pending task
+    DBGLN("LMIC busy, waiting");
+    os_setTimedCallback(j, os_getTime() + sec2osticks(1), do_send);
     return;
   }
 
@@ -538,9 +556,9 @@ void do_send(osjob_t* j)
 
   if (LMIC_setTxData2(1, payload, len, 0) != LMIC_ERROR_SUCCESS)
   {
-    // keep pendingCommand so the reply goes out on the next cycle
-    DBGLN("LMIC_setTxData2 failed, retrying next cycle");
-    sleepPending = true;
+    // keep pendingCommand and stay awake: retry shortly rather than sleeping a whole cycle
+    DBGLN("LMIC_setTxData2 failed, retrying in 1 s");
+    os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(1), do_send);
     return;
   }
 
@@ -774,7 +792,7 @@ void loop()
   watchdogKick();
   os_runloop_once();
 
-  if (sleepPending && !(LMIC.opmode & OP_TXRXPEND))
+  if (sleepPending && !lmicTxBusy())
   {
     sleepPending = false;
     DBG("Sleeping ");
