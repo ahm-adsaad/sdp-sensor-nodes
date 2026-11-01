@@ -1390,6 +1390,16 @@ void setup()
   LMIC_startJoining();
 }
 
+// Naps while LMIC waits (loop()). Not joined, LMIC waits seconds to minutes between join attempts,
+// and joined, it waits out the duty cycle before an uplink it queued itself (MAC answers, about
+// 7 s). loop() used to idle (about 1 mA) through all of it. Now it power-downs in chunks of up to
+// NAP_MS while LMIC's next timed job is at least NAP_GUARD_MS away, so every chunk ends a second or
+// more before that job, and idles when a chunk would be shorter than NAP_MIN_MS.
+const uint32_t NAP_MS = 2000;
+const uint32_t NAP_GUARD_MS = 3000;
+const int32_t NAP_MIN_MS = 200;
+static_assert(NAP_GUARD_MS > NAP_MS, "a nap must end before LMIC's next timed job is due");
+
 void loop()
 {
   watchdogKick();
@@ -1423,6 +1433,22 @@ void loop()
   else
   {
     // Idle keeps the 1 ms millis tick running, so LMIC's receive-window timing still holds.
-    LowPower.idle();
+    // Power-down (a nap, see NAP_MS) is safe instead when:
+    //  - no TX/RX cycle is running (OP_TXRXPEND clear): receive windows only exist inside one, and
+    //    the radio's DIO lines, polled only while awake, have nothing to report;
+    //  - LMIC's next timed job (a join attempt, a duty-cycle wait, do_send's 1 s retry) is at least
+    //    NAP_GUARD_MS away. sleepUntil() credits millis(), and so LMIC's micros() clock, for the
+    //    nap, so that job still runs when it is due. LMIC's runnable jobs cannot be seen from here,
+    //    but outside a TX/RX cycle they only start or restart a join, which a nap delays by at most
+    //    NAP_MS; do_send itself is queued only after the slot sleep and runs before this point.
+    // Joined, a nap never runs past the node's slot.
+    uint32_t napUntil = millis() + NAP_MS;
+    if (LMIC.devaddr != 0 && (int32_t)(napUntil - nextSlotAt) > 0)
+      napUntil = nextSlotAt;
+    if (!(LMIC.opmode & OP_TXRXPEND) && !os_queryTimeCriticalJobs(ms2osticks(NAP_GUARD_MS)) &&
+        (int32_t)(napUntil - millis()) >= NAP_MIN_MS)
+      sleepUntil(napUntil);
+    else
+      LowPower.idle();
   }
 }
