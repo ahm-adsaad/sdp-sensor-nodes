@@ -127,17 +127,44 @@ void setup()
   if (!ensFound) Serial.println("ENS160 not found on J3 or J4");
 
   if (ensFound)
-  {
-    selectBus(ensBus);
-    Serial.println("Starting ENS160 gas sensing (heater about 29 mA) ...");
-    Serial.flush();
-    ens160SetMode(ENS160_OPMODE_IDLE);
-    delay(10);
-    uint8_t mode = 0xFF;
-    ensSensing = ens160SetMode(ENS160_OPMODE_STANDARD) && ens160GetMode(mode) && mode == ENS160_OPMODE_STANDARD;
-    Serial.println(ensSensing ? "ENS160 sensing (values settle after about 3 min)" : "ENS160 did not enter gas sensing");
-  }
+    ensStart();
   Serial.println("--- readings every 2 s ---");
+}
+
+// Starts gas sensing step by step and prints what each step returned, so a failure shows where
+void ensStart()
+{
+  selectBus(ensBus);
+  uint8_t mode = 0xFF, status = 0xFF;
+  Serial.print("ENS160 mode before 0x");
+  Serial.print(ens160GetMode(mode) ? mode : 0xEE, HEX);
+  Serial.print(", status 0x");
+  Serial.println(ens160ReadStatus(status) ? status : 0xEE, HEX);
+
+  bool ok = ens160SetMode(ENS160_OPMODE_IDLE);
+  delay(10);
+  Serial.print("  IDLE write ");
+  Serial.print(ok ? "ok" : "NACK");
+  mode = 0xFF;
+  Serial.print(", mode now 0x");
+  Serial.println(ens160GetMode(mode) ? mode : 0xEE, HEX);
+
+  Serial.println("  STANDARD write (heater on, up to 79 mA for <5 ms) ...");
+  Serial.flush();
+  ok = ens160SetMode(ENS160_OPMODE_STANDARD);
+  delay(50);
+  Serial.print("  STANDARD write ");
+  Serial.print(ok ? "ok" : "NACK");
+  mode = 0xFF;
+  bool readOk = ens160GetMode(mode);
+  Serial.print(", mode now 0x");
+  Serial.print(readOk ? mode : 0xEE, HEX);
+  Serial.print(", status 0x");
+  Serial.print(ens160ReadStatus(status) ? status : 0xEE, HEX);
+  Serial.print(", part id ");
+  Serial.println(ens160Probe() ? "still answers" : "GONE (sensor reset or bus stuck)");
+  ensSensing = readOk && mode == ENS160_OPMODE_STANDARD;
+  Serial.println(ensSensing ? "ENS160 sensing (values settle after about 3 min)" : "ENS160 did not enter gas sensing, retrying in 10 s");
 }
 
 void loop()
@@ -187,5 +214,12 @@ void loop()
   }
   else Serial.print("no ENS160");
   Serial.println();
+
+  static uint8_t retryCount = 0;
+  if (ensFound && !ensSensing && ++retryCount >= 5)
+  {
+    retryCount = 0;
+    ensStart();
+  }
   delay(2000);
 }
