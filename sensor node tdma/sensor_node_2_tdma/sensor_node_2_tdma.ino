@@ -169,9 +169,21 @@ bool dataFrameInFlight = false;   // our uplink, not one LMIC queued for MAC ans
 bool synced = false;
 uint32_t slotsUsed = 0, resyncs = 0, tasksSkipped = 0;
 
+// Sleep clock: the RTC PIT runs from the 1.024 kHz ULP clock with RTC_PERIOD_CYC64_gc (setup()),
+// and 1024 Hz / 64 is 16 Hz, so one tick is nominally 62500 us. A short tick keeps the idle part of
+// sleepUntil() (the wait for a tick edge, then one to two ticks before the target) near 0.1 s
+// instead of about 2 s.
+const uint16_t PIT_TICKS_PER_S = 16;
+// pitTicks is 16 bits: the longest sleep, a MAX_FRAME_MS frame plus a slot correction of up to
+// 65.5 s (about 1866 s), must stay under 65535 ticks. That is 29856 ticks at 16 Hz, so a ULP clock
+// 10 % fast still fits; 64 Hz would not, and that sleep would never end (the watchdog is kicked
+// on every tick).
+static_assert(((MAX_FRAME_MS / 1000UL + 66UL) * PIT_TICKS_PER_S) < 65535UL,
+              "pitTicks (16 bits) would overflow in the longest sleep");
+
 // Length of one RTC PIT tick in microseconds, measured against the main clock in setup()
-// (nominally 1 s, but the ULP oscillator is only good to +-10 %).
-uint32_t usPerTick = 1000000;
+// (nominally 1000000 / PIT_TICKS_PER_S = 62500 us, but the ULP oscillator is only good to +-10 %).
+uint32_t usPerTick = 1000000UL / PIT_TICKS_PER_S;
 
 // Transmit power cap (dBm) for every frame, joins included. On rev 2 the whole 3.3 V rail is the
 // AEM10330's LOAD output, which gives about 60 mA with the storage at 2.8-3.0 V and 72-76 mA
@@ -352,6 +364,8 @@ uint32_t downlinksMissed = 0;
 // and stops in power-down, so sleepUntil() adds the slept time back.
 extern "C" volatile uint32_t timer_millis;
 
+// RTC PIT ticks, PIT_TICKS_PER_S a second: one interrupt per tick, which wakes the CPU from
+// power-down or idle. 16 bits, see the static_assert under PIT_TICKS_PER_S.
 volatile uint16_t pitTicks = 0;
 
 ISR(RTC_PIT_vect)
@@ -373,11 +387,12 @@ uint16_t readPitTicks()
   return ticks;
 }
 
-// Measures one RTC PIT tick (1024 ULP cycles, nominally 1 s) against the main clock, which keeps
-// millis() and LMIC's timing (+-2 %). Takes about 5 s; called once in setup().
+// Measures one RTC PIT tick (64 ULP cycles, nominally 62500 us) against the main clock, which
+// keeps millis() and LMIC's timing (+-2 %), averaged over about 4 s of ticks. Takes about 4 s;
+// called once in setup().
 uint32_t measurePitTick()
 {
-  const uint8_t TICKS = 4;
+  const uint16_t TICKS = 4 * PIT_TICKS_PER_S;  // 64 ticks, about 4 s
   uint16_t t = readPitTicks();
   while (readPitTicks() == t) { watchdogKick(); }  // start on a tick edge
   uint32_t start = micros();
@@ -387,10 +402,10 @@ uint32_t measurePitTick()
 }
 
 // Sleeps until millis() reaches `target`: power-down in whole PIT ticks (the RTC PIT, from the
-// 1.024 kHz ULP oscillator, is the only timer left running there), then idle for the last part,
-// where the 1 ms tick runs again, so the slot is hit to the millisecond. millis() stops in
-// power-down, so the slept ticks are added back at the measured tick length; LMIC keeps time
-// with micros(), which is built on it.
+// 1.024 kHz ULP oscillator, is the only timer left running there), then idle for the last one to
+// two ticks (62.5-125 ms), where the 1 ms tick runs again, so the slot is hit to the millisecond.
+// millis() stops in power-down, so the slept ticks are added back at the measured tick length;
+// LMIC keeps time with micros(), which is built on it.
 void sleepUntil(uint32_t target)
 {
 #if DEBUG
@@ -398,7 +413,7 @@ void sleepUntil(uint32_t target)
 #endif
   static uint32_t usCarry = 0;  // sub-millisecond part of the slept time, carried to the next sleep
 
-  // wait for a tick edge (idle, under a second) so every powered-down tick is a whole one
+  // wait for a tick edge (idle, under one tick) so every powered-down tick is a whole one
   uint16_t t = readPitTicks();
   while (readPitTicks() == t && (int32_t)(target - millis()) > 0)
   {
@@ -406,6 +421,9 @@ void sleepUntil(uint32_t target)
     watchdogKick();
   }
 
+  // 32 bits are enough: left is at most about 1866000 ms (see PIT_TICKS_PER_S), so left * 1000 is
+  // at most 1.87e9 us, and ticks * usPerTick + usCarry below stays under that (ticks is
+  // left * 1000 / usPerTick, less one; usCarry is under 1000).
   int32_t left = (int32_t)(target - millis());
   uint32_t ticks = left > 0 ? (uint32_t)left * 1000UL / usPerTick : 0;
   if (ticks > 0)
@@ -622,10 +640,13 @@ void brownOutBackOff()
 #if DEBUG
   Serial.flush();
 #endif
+  // wait is in seconds; the rest counts PIT ticks at the nominal rate (usPerTick is not measured
+  // yet, and a rest does not need it)
+  uint32_t restTicks = wait * PIT_TICKS_PER_S;
   noInterrupts();
   pitTicks = 0;
   interrupts();
-  while (readPitTicks() < wait)
+  while (readPitTicks() < restTicks)
   {
     LowPower.powerDown();
     watchdogKick();
@@ -1248,12 +1269,13 @@ void setup()
   LowPower.disablePinISC(PIN_PA1);
 #endif
 
-  // RTC PIT: 1.024 kHz from the internal ULP oscillator, one interrupt per second
+  // RTC PIT: 1.024 kHz from the internal ULP oscillator divided by 64, one interrupt per tick,
+  // PIT_TICKS_PER_S (16) a second
   while (RTC.STATUS > 0) {}
   RTC.CLKSEL = RTC_CLKSEL_INT1K_gc;
   RTC.PITINTCTRL = RTC_PI_bm;
   while (RTC.PITSTATUS > 0) {}
-  RTC.PITCTRLA = RTC_PERIOD_CYC1024_gc | RTC_PITEN_bm;
+  RTC.PITCTRLA = RTC_PERIOD_CYC64_gc | RTC_PITEN_bm;
 
   brownOutBackOff();  // first, before anything draws current
 
