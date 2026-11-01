@@ -62,6 +62,7 @@
 // loop() only sleeps once it is clear.
 // The OTAA keys are in secrets.h next to this file, which is kept out of git.
 #include <Wire.h>
+#include <SPI.h>
 #include <EEPROM.h>
 #include <lmic.h>
 #include <hal/hal.h>
@@ -557,6 +558,43 @@ void learnFromBrownOut()
   DBG(" so far): TX power cap now ");
   DBG(settings.txPowerCap);
   DBGLN(" dBm");
+}
+
+// The SX1276 comes out of a power-on in standby (about 1.6 mA; SX1276 datasheet, from memory), and
+// after an MCU brown-out it stays as it was left (standby once a cut-short TX or RX ends) until
+// os_init() resets it and puts it to sleep, which is after the brown-out rest (up to 8 min) and the
+// 4 s calibration. This puts it to sleep at the top of setup() instead. A frame still on air after
+// an MCU brown-out is cut off; that frame is lost anyway, LMIC's state is gone. RST and the DIO
+// pins are not touched: os_init() still resets the radio exactly as before.
+// Register access as LMIC's radio_sx127x.c does it (writeReg/readReg): NSS low, the address with
+// bit 7 clear to read or set to write, one data byte, NSS high. RegOpMode (0x01) bits 2:0 are the
+// mode, 000 = sleep in both LoRa and FSK mode (LMIC's OPMODE_MASK / OPMODE_SLEEP). Bit 7 (LoRa or
+// FSK) may only change in sleep (datasheet, from memory) and bit 3 (low-frequency mode) is the
+// module's own setting, so every bit but the mode is written back as read.
+void radioSleepEarly()
+{
+  const uint8_t SX1276_REG_OPMODE = 0x01;
+  const uint8_t SX1276_OPMODE_MODE_gm = 0x07;  // 000 = sleep
+
+  // NSS high before it becomes an output: digitalWrite() on an input only sets its pull-up
+  PORT_t* nssPort = digitalPinToPortStruct(lmic_pins.nss);
+  uint8_t nssMask = digitalPinToBitMask(lmic_pins.nss);
+  nssPort->OUTSET = nssMask;
+  nssPort->DIRSET = nssMask;
+  PORTA.PIN5CTRL |= PORT_PULLUPEN_bm;  // MISO floats while the radio is deselected (as in setup())
+  SPI.begin();  // PA4-PA6; LMIC's hal_init() calls it again later, which is harmless
+  delay(10);    // SX1276 power-on reset until SPI is ready: 10 ms (datasheet, from memory)
+
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  digitalWrite(lmic_pins.nss, LOW);
+  SPI.transfer(SX1276_REG_OPMODE & 0x7F);  // read
+  uint8_t opMode = SPI.transfer(0x00);
+  digitalWrite(lmic_pins.nss, HIGH);
+  digitalWrite(lmic_pins.nss, LOW);
+  SPI.transfer(SX1276_REG_OPMODE | 0x80);  // write
+  SPI.transfer((uint8_t)(opMode & ~SX1276_OPMODE_MODE_gm));
+  digitalWrite(lmic_pins.nss, HIGH);
+  SPI.endTransaction();
 }
 
 // Counts brown-out resets in a row and, after one, sleeps before anything draws current so the
@@ -1270,6 +1308,10 @@ void setup()
   pinMode(PIN_RAIL_A, OUTPUT);
   digitalWriteFast(PIN_RAIL_A, LOW);
 
+  // radio asleep before the brown-out rest; after the pins above, so the header enables are
+  // driven low before its 10 ms wait
+  radioSleepEarly();
+
 #if DEBUG
   Serial.begin(115200);
   PORTA.PIN1CTRL |= PORT_PULLUPEN_bm;  // RX0 floats when the USB-serial adapter is unplugged
@@ -1291,7 +1333,9 @@ void setup()
   while (RTC.PITSTATUS > 0) {}
   RTC.PITCTRLA = RTC_PERIOD_CYC64_gc | RTC_PITEN_bm;
 
-  brownOutBackOff();  // first, before anything draws current
+  // First, before anything draws current: only radioSleepEarly() comes before it (a 10 ms wait and
+  // four SPI bytes), and that is what makes the rest cheap, the radio sleeps through it.
+  brownOutBackOff();
 
   usPerTick = measurePitTick();
   DBG("Sleep clock: one PIT tick = ");
