@@ -16,8 +16,9 @@
 //  - Every uplink ends with the node's energy (uint16, 0..ENERGY_CAPACITY units), worked out from
 //    the storage voltage (see energyUnits); a task the node cannot afford is skipped and a status
 //    packet goes instead, so the server reassigns it.
-//  - Power-down between slots as before, but timed to the millisecond: the sleep clock is measured
-//    against the main clock at boot (see sleepUntil).
+//  - Power-down between slots as before, and between join attempts and LMIC waits (see loop()),
+//    timed to the millisecond: the sleep clock is measured against the main clock at boot (see
+//    sleepUntil).
 //  - Sensors are powered only for the task that needs them (see readTask): a temperature or
 //    humidity task switches the SHT41's header on in its reply slot, reads and switches it off; a
 //    gas task switches the ENS160's header on as soon as the task arrives, heats it until the reply
@@ -59,7 +60,8 @@
 // LMIC_ERROR_TX_BUSY and slept a whole cycle; the board stopped sending for good (seen on node 1).
 // lmicTxBusy() checks OP_TXRXPEND | OP_TXDATA | OP_POLL | OP_JOINING: do_send() waits and retries
 // every 1 s while it is set, a failed LMIC_setTxData2 retries in 1 s instead of sleeping, and
-// loop() only sleeps once it is clear.
+// loop() only sleeps once it is clear, except bounded naps (NAP_MS) that end at least 1 s before
+// LMIC's next timed job; never a slot sleep or a send.
 // The OTAA keys are in secrets.h next to this file, which is kept out of git.
 #include <Wire.h>
 #include <SPI.h>
@@ -350,6 +352,8 @@ bool sleepPending = false;  // an uplink cycle has finished and nothing else is 
 // downlink with MAC commands), a join, or our data. LMIC only sends a queued frame while loop() is
 // awake, so sleeping or starting a new send in this state deadlocks: LMIC_setTxData2 keeps failing
 // with LMIC_ERROR_TX_BUSY and the board sleeps again before LMIC can transmit (seen 2026-10-20).
+// The one exception is loop()'s bounded nap (NAP_MS), which ends at least 1 s before LMIC's next
+// timed job and never falls inside a TX/RX cycle; never a slot sleep or a send.
 static bool lmicTxBusy()
 {
   return (LMIC.opmode & (OP_TXRXPEND | OP_TXDATA | OP_POLL | OP_JOINING)) != 0;
@@ -440,6 +444,11 @@ void sleepUntil(uint32_t target)
       LowPower.powerDown();
       watchdogKick();  // the watchdog keeps counting in power-down
     }
+    // The millis TCB runs on CLK_PER, so it also counts the 10-15 us or so awake after each PIT
+    // wake (ISR, loop check, re-sleep), and the full tick is credited on top: millis() runs about
+    // 0.02 % fast here (5-7 ms early per 30 s frame, about 0.4 s in an 1866 s sleep; an estimate,
+    // not measured). The server's per-frame slot correction absorbs it, and it is far below the
+    // ULP's own drift.
     uint32_t us = ticks * usPerTick + usCarry;
     usCarry = us % 1000UL;
     noInterrupts();
@@ -567,10 +576,10 @@ void learnFromBrownOut()
 // an MCU brown-out is cut off; that frame is lost anyway, LMIC's state is gone. RST and the DIO
 // pins are not touched: os_init() still resets the radio exactly as before.
 // Register access as LMIC's radio_sx127x.c does it (writeReg/readReg): NSS low, the address with
-// bit 7 clear to read or set to write, one data byte, NSS high. RegOpMode (0x01) bits 2:0 are the
-// mode, 000 = sleep in both LoRa and FSK mode (LMIC's OPMODE_MASK / OPMODE_SLEEP). Bit 7 (LoRa or
-// FSK) may only change in sleep (datasheet, from memory) and bit 3 (low-frequency mode) is the
-// module's own setting, so every bit but the mode is written back as read.
+// bit 7 clear to read or set to write, one data byte, NSS high. RegOpMode (address 0x01) bits 2:0
+// are the mode, 000 = sleep in both LoRa and FSK mode (LMIC's OPMODE_MASK / OPMODE_SLEEP); after a
+// reset the mode is standby. Bit 7 (LoRa or FSK) may only change in sleep (datasheet, from
+// memory), so every bit but the mode, bit 3 (low-frequency mode) included, is written back as read.
 void radioSleepEarly()
 {
   const uint8_t SX1276_REG_OPMODE = 0x01;
@@ -583,7 +592,11 @@ void radioSleepEarly()
   nssPort->DIRSET = nssMask;
   PORTA.PIN5CTRL |= PORT_PULLUPEN_bm;  // MISO floats while the radio is deselected (as in setup())
   SPI.begin();  // PA4-PA6; LMIC's hal_init() calls it again later, which is harmless
-  delay(10);    // SX1276 power-on reset until SPI is ready: 10 ms (datasheet, from memory)
+  // SX1276 ready for SPI 10 ms after the end of its power-on reset (datasheet, from memory); after
+  // a power-on, the MCU's 32 ms start-up time (fuse SYSCFG1 = 0x06, as MegaCoreX writes it with
+  // the programmer) comes first and adds margin. If the radio were not ready, it would ignore the
+  // write and stay as it was, which is the old behaviour; os_init() resets it either way.
+  delay(10);
 
   SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   digitalWrite(lmic_pins.nss, LOW);

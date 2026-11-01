@@ -21,8 +21,9 @@ whatever its energy. Set it to 0 for real runs, so a task the node cannot afford
 ## Sleep
 
 - The node sleeps in power-down between frames, between join attempts and while LMIC waits out its
-  duty cycle. It idles only while a TX/RX cycle runs (uplink to the end of RX1 or RX2), where LMIC's
-  receive windows need the 1 ms clock.
+  duty cycle. It idles while a TX/RX cycle runs (uplink to the end of RX1 or RX2), where LMIC's
+  receive windows need the 1 ms clock, for the last 1-3 s before each LMIC job, and while LMIC holds
+  a frame past the node's slot.
 - The sleep clock is the RTC PIT at 16 Hz (62.5 ms) from the internal ULP oscillator, measured
   against the main clock at boot, so the node wakes for its slot to the millisecond after about
   0.1 s of idle.
