@@ -18,6 +18,15 @@ whatever its energy. Set it to 0 for real runs, so a task the node cannot afford
   200 x (V^2 - 2.80^2) / (3.60^2 - 2.80^2), the AEM10330's cut-off and full levels (1 unit = 1.92 J
   for the 150 F store).
 
+## Sleep
+
+- The node sleeps in power-down between frames, between join attempts and while LMIC waits out its
+  duty cycle. It idles only while a TX/RX cycle runs (uplink to the end of RX1 or RX2), where LMIC's
+  receive windows need the 1 ms clock.
+- The sleep clock is the RTC PIT at 16 Hz (62.5 ms) from the internal ULP oscillator, measured
+  against the main clock at boot, so the node wakes for its slot to the millisecond after about
+  0.1 s of idle.
+
 ## Sensors: powered per task
 
 - Both sensor headers are used. Nothing is powered at boot: the first task that needs the SHT41 or
@@ -28,14 +37,16 @@ whatever its energy. Set it to 0 for real runs, so a task the node cannot afford
 - Temperature / humidity task: the SHT41's header is switched on in the reply slot, read, switched off.
 - Gas task: the ENS160's header is switched on as soon as the task arrives and heats until the reply
   slot one frame (30 s) later; that reading goes out with the ENS160's validity flag (warm-up until
-  about 3 min, "first hour" while the sensor itself is new). Then it is switched off.
+  about 3 min, "first hour" while the sensor itself is new). Then it is switched off. With
+  TEST_IGNORE_ENERGY 0, a gas task the node cannot afford is skipped as it arrives, before the heater
+  runs, and the reply slot sends a status packet.
 - Headers are switched on with a pulsed ramp (on-times 50 to 800 us in 5 us steps, 20 us off): a plain
   switch-on of the ENS160 board browned the node out every time. See `bench/sequence_test/RESULTS.md`.
 
 ## Brown-outs
 
-- After a brown-out reset the node rests in power-down (30 s, doubling up to 8 min) before switching
-  anything on, so the storage can recharge.
+- After a brown-out reset the node puts the radio to sleep, then rests in power-down (30 s, doubling
+  up to 8 min) before switching anything on, so the storage can recharge.
 - A brown-out is pinned on what was going on: switching J3 on, switching J4 on, or the ENS160 heater.
   After 3 in a row that part stays off (the rest keeps working); a power-on, a flash, or the hourly
   retry clears it. An unexplained brown-out (the radio, a low storage) only lengthens the rest: the
