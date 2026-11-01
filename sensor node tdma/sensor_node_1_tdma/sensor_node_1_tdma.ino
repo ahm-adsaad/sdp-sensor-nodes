@@ -1231,7 +1231,26 @@ void onEvent(ev_t ev)
             pendingCommand = cmd;  // answered in the next slot
 #if USE_ENS160
           if (cmd == CMD_GAS)
-            gasStart();  // heat from now until the reply slot
+          {
+            // Checked now, before the heater runs a whole frame (about 2.8 J), not only in the reply
+            // slot (do_send), when it already has: a gas task the node cannot afford is skipped here
+            // and the next slot sends a status packet. With TEST_IGNORE_ENERGY 1 the heater starts
+            // as always, without the VSTO read (about 3 ms; the radio is asleep here).
+            uint16_t energy = TEST_IGNORE_ENERGY ? 0 : energyUnits(readVstoMv());
+            if (!TEST_IGNORE_ENERGY && energy < taskCost(CMD_GAS))
+            {
+              tasksSkipped++;
+              DBG("Skipping task 0x");
+              DBG(cmd, HEX);
+              DBG(" at arrival: needs ");
+              DBG(taskCost(CMD_GAS));
+              DBG(", energy ");
+              DBGLN(energy);
+              pendingCommand = 0;
+            }
+            else
+              gasStart();  // heat from now until the reply slot
+          }
 #endif
           else if (cmd == CMD_RESET_ENERGY)
             DBGLN("  battery refill ignored: this node reports its real energy");
