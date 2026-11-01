@@ -393,11 +393,13 @@ uint16_t readPitTicks()
 uint32_t measurePitTick()
 {
   const uint16_t TICKS = 4 * PIT_TICKS_PER_S;  // 64 ticks, about 4 s
+  // Idle between the checks, not a busy spin: the PIT and the 1 ms millis tick both wake the CPU,
+  // so each edge is seen within 1 ms (0.025 % of the 4 s).
   uint16_t t = readPitTicks();
-  while (readPitTicks() == t) { watchdogKick(); }  // start on a tick edge
+  while (readPitTicks() == t) { LowPower.idle(); watchdogKick(); }  // start on a tick edge
   uint32_t start = micros();
   t = readPitTicks();
-  while ((uint16_t)(readPitTicks() - t) < TICKS) { watchdogKick(); }
+  while ((uint16_t)(readPitTicks() - t) < TICKS) { LowPower.idle(); watchdogKick(); }
   return (micros() - start) / TICKS;
 }
 
@@ -895,7 +897,11 @@ void readTask(uint8_t cmd, Reading &r)
         break;
       fresh = status & ENS160_STATUS_NEWDAT;
       if (!fresh)
-        delay(100);
+      {
+        uint32_t t0 = millis();
+        while (millis() - t0 < 100)  // 100 ms in idle, not delay(): the 1 ms millis tick wakes the CPU
+          LowPower.idle();
+      }
     }
     if (!fresh)
       r.ensStatus = ENS_NO_SAMPLE;
@@ -1248,6 +1254,14 @@ void setup()
 
   for (uint8_t i = 0; i < sizeof(UNUSED_PINS); i++)
     LowPower.disablePinISC(UNUSED_PINS[i]);
+  // The TWI pins of both headers start parked, as headerOff() leaves them; headerOn() turns a
+  // header's pair back on before Wire.begin(). With R9-R12 on the always-on 3V3 this changes
+  // nothing (the lines are held high), but with R9-R12 removed or moved to VCC_SENS the pins would
+  // float until the first task.
+  LowPower.disablePinISC(PIN_PA2);
+  LowPower.disablePinISC(PIN_PA3);
+  LowPower.disablePinISC(PIN_PC2);
+  LowPower.disablePinISC(PIN_PC3);
 
   pinMode(PIN_LED, OUTPUT);
   digitalWriteFast(PIN_LED, LOW);
