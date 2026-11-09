@@ -1,5 +1,5 @@
 // Template for a node's secrets.h: copy it into the sketch folder as secrets.h and fill in the
-// keys from ChirpStack. secrets.h is git-ignored, so keys never reach GitHub.
+// keys from ChirpStack. secrets.h is committed with the sketch (team decision 2026-11-09).
 #pragma once
 
 // JoinEUI (AppEUI), LSB first; all zeros for ChirpStack

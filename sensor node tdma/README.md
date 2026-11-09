@@ -83,6 +83,6 @@ the DevEUI goes in byte-reversed (LSB first). AppKeys are not in this repo.
 | 5 | `8ddf8a6439434f88` | `0x88, 0x4F, 0x43, 0x39, 0x64, 0x8A, 0xDF, 0x8D` | none yet (registered in ChirpStack) |
 
 Build and flash exactly as the ALOHA sketches (MegaCoreX ATmega4809, 48 pin standard, internal 8 MHz,
-BOD 2.6 V, EEPROM retained, JTAG2UPDI). Each sketch folder needs its own `secrets.h`
-(copy `secrets.example.h` and fill in that node's DevEUI and AppKey from ChirpStack; secrets.h is kept
-out of git, so a fresh clone has none).
+BOD 2.6 V, EEPROM retained, JTAG2UPDI). Each sketch folder has its own `secrets.h` with that
+node's DevEUI and AppKey from ChirpStack. The secrets.h files are committed with the sketches since
+2026-11-09 (team decision), so everyone builds from the same tree.

@@ -64,7 +64,7 @@
 // every 1 s while it is set, a failed LMIC_setTxData2 retries in 1 s instead of sleeping, and
 // loop() only sleeps once it is clear, except bounded naps (NAP_MS) that end at least 1 s before
 // LMIC's next timed job; never a slot sleep or a send.
-// The OTAA keys are in secrets.h next to this file, which is kept out of git.
+// The OTAA keys are in secrets.h next to this file, committed with the sketch (2026-11-09).
 #include <Wire.h>
 #include <SPI.h>
 #include <EEPROM.h>

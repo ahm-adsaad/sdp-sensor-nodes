@@ -35,7 +35,7 @@
 // lmicTxBusy() checks OP_TXRXPEND | OP_TXDATA | OP_POLL | OP_JOINING: do_send() waits and retries
 // every 1 s while it is set, a failed LMIC_setTxData2 retries in 1 s instead of sleeping, and
 // loop() only sleeps once it is clear.
-// The OTAA keys are in secrets.h next to this file, which is kept out of git.
+// The OTAA keys are in secrets.h next to this file, committed with the sketch (2026-11-09).
 #include <Wire.h>
 #include <EEPROM.h>
 #include <lmic.h>
