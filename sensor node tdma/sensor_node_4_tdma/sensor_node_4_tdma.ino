@@ -1,5 +1,6 @@
 // TDMA sensor node 4: the same code as sensor_node_1_tdma.ino with NODE_NUMBER 4 (nodes 3 and 4
-// have no ALOHA version). Keys for node 4 go in secrets.h next to this file (see secrets.example.h).
+// have no ALOHA version), except that temperature / humidity come from a DHT11 on J3 (USE_DHT11).
+// Keys for node 4 go in secrets.h next to this file (see secrets.example.h).
 // DevEUI 1d911ad99f920e37. Server sees this board as sensor 4: its DevEUI must be in num_to_eui on
 // the server, and task-service-tdma needs TDMA_SLOTS = 4. Do not run it while another device with
 // the same keys is on.
@@ -77,6 +78,8 @@
 
 #define DEBUG 1           // 0 for battery runs: no serial output and the UART pins are parked
 #define USE_ENS160 1      // 0 = no ENS160 on the bus: gas bytes carry 0 ppb / 400 ppm / status 0xFF
+#define USE_DHT11 1       // node 4: a 3-pin DHT11 on J3 (data on SDA_A, PA2) replaces the SHT41 for
+                          // temperature / humidity; the ENS160 is then looked for on J4 only
 #define VSTO_SENSE 1      // 0 = the storage divider on H5 pin 1 is not fitted, status packets send 0 mV
 #define NODE_NUMBER 4     // sensor number on the server (num_to_eui); picks the default slot
 #define TEST_IGNORE_ENERGY 0 // 1 = TEST ONLY: never skip a task for lack of energy
@@ -808,7 +811,8 @@ void headerOff(uint8_t bus)
   bootTrace.fails[j3 ? 0 : 1] = 0;
 }
 
-// Looks for the SHT41 (sht) or the ENS160 the first time a task needs it, so nothing is powered
+// Looks for the SHT41 (sht) or the ENS160 the first time a task needs it (with USE_DHT11 only the
+// ENS160, and only on J4: J3 holds the DHT11, whose data line must not see I2C traffic), so nothing is powered
 // outside a task: J3, then J4, one header at a time, each switched off again (the task powers the
 // sensor's header itself). A header already on for a warming ENS160 is asked as it is: switching it
 // again would cut the heater. The other sensor is noted too if it answers on the same header.
@@ -818,7 +822,8 @@ void findSensor(bool sht)
     shtSearched = true;
   else
     ensSearched = true;
-  for (uint8_t bus = BUS_J3; bus <= BUS_J4 && !(sht ? shtFound : ens160Found); bus++)
+  for (uint8_t bus = USE_DHT11 ? BUS_J4 : BUS_J3; bus <= BUS_J4 && !(sht ? shtFound : ens160Found);
+       bus++)
   {
 #if USE_ENS160
     bool alreadyOn = gasWarming && bus == ensBus;
@@ -913,6 +918,119 @@ void gasStop()
 }
 #endif
 
+#if USE_DHT11
+// ---- DHT11 on J3 (node 4) ----
+// A 3-pin DHT11: VCC on VCC_SENS_A, data on SDA_A (PA2), GND. The data line uses the board's bus
+// pull-up (R9-R12, on the always-on 3V3), so no extra resistor is needed. Single-wire protocol: the
+// host pulls the line low for at least 18 ms, the sensor answers 80 us low, 80 us high, then sends
+// 40 bits, each 50 us low followed by 26-28 us high (0) or 70 us high (1): humidity integer and
+// decimal, temperature integer and decimal (bit 7 of it = below 0 C), checksum. Read with
+// interrupts off (about 5 ms) by comparing each bit's high time against its low time, as the
+// Adafruit DHT library does, so it does not depend on the exact clock.
+const uint16_t DHT_POWERUP_MS = 1100;  // datasheet: 1 s after power-up before the first read
+const uint16_t DHT_RETRY_MS = 1100;    // and at least 1 s between two reads
+const uint16_t DHT_TIMEOUT = 1000;     // loop passes before a pulse counts as missing (~1 ms)
+const uint16_t DHT_MISSING = 0xFFFF;   // dhtPulse() result on a timeout
+
+void dhtWait(uint16_t ms)
+{
+  uint32_t t0 = millis();
+  while (millis() - t0 < ms)
+  {
+    LowPower.idle();  // idle, not delay(): the 1 ms millis tick wakes the CPU
+    watchdogKick();
+  }
+}
+
+// Loop passes while PA2 stays at `level` (0 if it already is not), or DHT_MISSING on a timeout.
+static inline uint16_t dhtPulse(bool level)
+{
+  uint16_t n = 0;
+  while (((VPORTA.IN & PIN2_bm) != 0) == level)
+    if (++n >= DHT_TIMEOUT)
+      return DHT_MISSING;
+  return n;
+}
+
+// One read: true with a good checksum.
+bool dhtReadOnce(int16_t &tempX100, int16_t &humX100)
+{
+  uint8_t d[5] = { 0, 0, 0, 0, 0 };
+  uint16_t lows[40], highs[40];
+
+  VPORTA.OUT &= ~PIN2_bm;  // start signal: pull the line low for 20 ms
+  VPORTA.DIR |= PIN2_bm;
+  dhtWait(20);
+
+  noInterrupts();
+  VPORTA.DIR &= ~PIN2_bm;  // release: the pull-up takes it high, the sensor answers
+  delayMicroseconds(40);
+  // the sensor pulls the line low 20-40 us after the release (wait out what is left of that),
+  // then answers 80 us low and 80 us high
+  bool ok = dhtPulse(true) != DHT_MISSING && dhtPulse(false) != DHT_MISSING &&
+            dhtPulse(true) != DHT_MISSING;
+  for (uint8_t i = 0; ok && i < 40; i++)
+  {
+    lows[i] = dhtPulse(false);
+    highs[i] = dhtPulse(true);
+    ok = lows[i] != DHT_MISSING && highs[i] != DHT_MISSING;
+  }
+  interrupts();
+  if (!ok)
+  {
+    DBGLN("DHT11 did not answer");
+    return false;
+  }
+  for (uint8_t i = 0; i < 40; i++)
+  {
+    d[i / 8] <<= 1;
+    if (highs[i] > lows[i])
+      d[i / 8] |= 1;
+  }
+  if ((uint8_t)(d[0] + d[1] + d[2] + d[3]) != d[4])
+  {
+    DBGLN("DHT11 checksum wrong");
+    return false;
+  }
+  humX100 = (int16_t)d[0] * 100 + (d[1] % 10) * 10;
+  int16_t t = (int16_t)d[2] * 100 + (d[3] & 0x0F) * 10;
+  tempX100 = (d[3] & 0x80) ? -t : t;
+  return true;
+}
+
+// Powers J3 (same ramp and brown-out tracking as headerOn, without the TWI), waits for the
+// sensor to start, reads it (one retry) and switches J3 off again.
+bool dhtRead(int16_t &tempX100, int16_t &humX100)
+{
+  if (bootTrace.culprits & CULPRIT_RAIL_A)
+  {
+    DBGLN("J3 (DHT11) left off after brown-outs");
+    return false;
+  }
+  bootTrace.phase = PHASE_RAIL_A;
+  VPORTA.DIR &= ~PIN2_bm;  // data line an input before the sensor gets power
+  LowPower.enablePinISC(PIN_PA2);
+  railRamp(VPORTD.OUT, PIN6_bm);
+  dhtWait(DHT_POWERUP_MS);
+  bool ok = dhtReadOnce(tempX100, humX100);
+  if (!ok)
+  {
+    dhtWait(DHT_RETRY_MS);
+    ok = dhtReadOnce(tempX100, humX100);
+  }
+  headerOff(BUS_J3);
+  if (ok)
+  {
+    DBG("DHT11: ");
+    DBG(tempX100 / 100.0);
+    DBG(" C, ");
+    DBG(humX100 / 100.0);
+    DBGLN(" %RH");
+  }
+  return ok;
+}
+#endif
+
 // The reading a task asks for. cmd 0 (a status packet) switches nothing on: every sensor field is
 // NOT_MEASURED / ENS_NOT_MEASURED. Temperature and humidity: the SHT41's header is switched on,
 // read and off again. Gas: the ENS160 has been heating since the task arrived (gasStart); it is
@@ -930,6 +1048,15 @@ void readTask(uint8_t cmd, Reading &r)
   {
     r.tempScaled = NO_READING;
     r.humScaled = NO_READING;
+#if USE_DHT11
+    int16_t t, h;
+    if (dhtRead(t, h))
+    {
+      r.tempScaled = t;
+      r.humScaled = h;
+    }
+    return;
+#endif
     if (!shtFound && !shtSearched)
       findSensor(true);
     if (!shtFound)
