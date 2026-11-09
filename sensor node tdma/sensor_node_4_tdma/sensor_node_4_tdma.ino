@@ -88,6 +88,12 @@
                                    // 2026-11-09); 1 = skip a task that costs more than the energy
                                    // left (taskCost). The real energy is reported either way.
 
+// ---- EXPERIMENTAL (2026-11-09): sensor-hang protection. NOT TESTED ON HARDWARE YET - the values
+// and the approach may need changing. Set either to 0 to go back to the old behaviour.
+#define I2C_TIMEOUT_GUARD 1                // abort a sensor's I2C access that runs over 3 s
+#define WATCHDOG_COUNTS_AS_SENSOR_FAULT 1  // a watchdog reset during a sensor access counts as
+                                           // that sensor's fault, like a brown-out there
+
 #if USE_ENS160
 #include "ens160_min.h"
 #endif
@@ -250,6 +256,7 @@ const uint8_t PHASE_IDLE = 0;
 const uint8_t PHASE_TX = 1;      // from EV_TXSTART until the radio is done transmitting
 const uint8_t PHASE_RAIL_A = 2;  // switching on VCC_SENS_A (J3) and talking to what is on it
 const uint8_t PHASE_RAIL_B = 3;  // switching on VCC_SENS_B (J4) and talking to what is on it
+const uint8_t PHASE_GAS_READ = 4;  // EXPERIMENTAL: reading the warmed-up ENS160 in the reply slot
 BootTrace bootTrace __attribute__((section(".noinit")));
 uint8_t bootPrevPhase = PHASE_IDLE;  // the phase the last reset hit, before this boot overwrites it
 bool bootPrevValid = false;
@@ -392,10 +399,49 @@ extern "C" volatile uint32_t timer_millis;
 // power-down or idle. 16 bits, see the static_assert under PIT_TICKS_PER_S.
 volatile uint16_t pitTicks = 0;
 
+// ---- EXPERIMENTAL (2026-11-09): I2C timeout. NOT TESTED ON HARDWARE YET - may need changing.
+// MegaCoreX's Wire has no timeout: a sensor that holds the bus (a loose wire, a dead SHT41 on node
+// 4, 2026-11-09) leaves it waiting forever in TWI_MasterWriteRead(), until the 8 s watchdog resets
+// the node, and the next task does it again. Around every sensor access (i2cGuardStart/Stop) the
+// PIT ISR below counts ticks; after I2C_GUARD_TICKS it ends the stuck transfer with the library's
+// own TWI_MasterTransactionFinished(), so the read fails normally ("no reading") and the header
+// is switched off as usual. 3 s covers the longest normal access: the gas read polls for up to
+// 1.5 s. If this misbehaves, set I2C_TIMEOUT_GUARD 0: the watchdog still catches a hang.
+extern "C" void TWI_MasterTransactionFinished(uint8_t result);  // MegaCoreX Wire, utility/twi.c
+const uint8_t TWI_RESULT_FAIL = 0x06;                             // TWIM_RESULT_FAIL in twi.h
+const uint8_t I2C_GUARD_TICKS = 3 * 16;                           // 3 s of 16 Hz PIT ticks
+volatile bool i2cGuard = false;
+volatile bool i2cGuardFired = false;
+volatile uint8_t i2cGuardTicks = 0;
+
 ISR(RTC_PIT_vect)
 {
   RTC.PITINTFLAGS = RTC_PI_bm;
   pitTicks++;
+#if I2C_TIMEOUT_GUARD
+  if (i2cGuard && ++i2cGuardTicks >= I2C_GUARD_TICKS)
+  {
+    TWI_MasterTransactionFinished(TWI_RESULT_FAIL);  // every tick from here on, until Stop
+    i2cGuardTicks = I2C_GUARD_TICKS;
+    i2cGuardFired = true;
+  }
+#endif
+}
+
+void i2cGuardStart()
+{
+  noInterrupts();
+  i2cGuardTicks = 0;
+  i2cGuardFired = false;
+  i2cGuard = true;
+  interrupts();
+}
+
+void i2cGuardStop()
+{
+  i2cGuard = false;
+  if (i2cGuardFired)
+    DBGLN("I2C timed out: sensor access aborted (EXPERIMENTAL guard)");
 }
 
 void watchdogKick()
@@ -663,23 +709,31 @@ void brownOutBackOff()
     bootTrace.fails[0] = bootTrace.fails[1] = bootTrace.fails[2] = 0;
   }
 
+  // EXPERIMENTAL (2026-11-09, may need changing): a watchdog reset while a sensor was being
+  // talked to (a hung I2C bus) is pinned on that sensor like a brown-out. Only during a sensor
+  // access: a watchdog reset while the gas sensor warms up in sleep, or in LMIC, is not a sensor's.
+  bool sensorHang = WATCHDOG_COUNTS_AS_SENSOR_FAULT && (resetFlags & RSTCTRL_WDRF_bm) &&
+                    !(resetFlags & RSTCTRL_PORF_bm) &&
+                    (bootPrevPhase == PHASE_RAIL_A || bootPrevPhase == PHASE_RAIL_B ||
+                     bootPrevPhase == PHASE_GAS_READ);
+
   // pin the brown-out on what was going on, if anything sensor-related; that part stays off
   // once it has done it CULPRIT_AFTER times in a row
   uint8_t culprit = 0, idx = 0;
-  if (bootPrevValid && brownOut)
+  if (bootPrevValid && (brownOut || sensorHang))
   {
     if (bootPrevPhase == PHASE_RAIL_A)
       culprit = CULPRIT_RAIL_A, idx = 0;
     else if (bootPrevPhase == PHASE_RAIL_B)
       culprit = CULPRIT_RAIL_B, idx = 1;
-    else if (bootTrace.gasOn)
+    else if (bootTrace.gasOn || bootPrevPhase == PHASE_GAS_READ)
       culprit = CULPRIT_GAS, idx = 2;
   }
   if (culprit)
   {
     if (bootTrace.fails[idx] < 255)
       bootTrace.fails[idx]++;
-    DBG("Brown-out pinned on ");
+    DBG(brownOut ? "Brown-out pinned on " : "Watchdog reset (sensor hang) pinned on ");
     DBG(CULPRIT_NAMES[idx]);
     DBG(", ");
     DBG(bootTrace.fails[idx]);
@@ -846,6 +900,7 @@ void findSensor(bool sht)
     else if (!headerOn(bus))
       continue;
     watchdogKick();
+    i2cGuardStart();
 #if USE_ENS160
     if (!ens160Found && ens160Probe())
     {
@@ -864,6 +919,7 @@ void findSensor(bool sht)
       sht4.setPrecision(SHT4X_HIGH_PRECISION);
       sht4.setHeater(SHT4X_NO_HEATER);
     }
+    i2cGuardStop();
     if (!alreadyOn)
       headerOff(bus);
   }
@@ -898,6 +954,7 @@ void gasStart()
     DBGLN("ENS160 header left off after brown-outs");
     return;
   }
+  i2cGuardStart();
   ens160SetMode(ENS160_OPMODE_RESET);
   delay(100);
   watchdogKick();
@@ -910,10 +967,12 @@ void gasStart()
   if (!ok)
   {
     DBGLN("ENS160 did not start gas sensing");
+    i2cGuardStop();
     bootTrace.gasOn = 0;
     headerOff(ensBus);
     return;
   }
+  i2cGuardStop();
   gasWarming = true;
   gasSince = millis();
   DBGLN("ENS160 on and heating for the gas task, read in the next slot");
@@ -1083,6 +1142,7 @@ void readTask(uint8_t cmd, Reading &r)
       return;
     }
     selectBus(shtBus);
+    i2cGuardStart();
     sensors_event_t humEvent, tempEvent;
     if (sht4.getEvent(&humEvent, &tempEvent))
     {
@@ -1091,6 +1151,7 @@ void readTask(uint8_t cmd, Reading &r)
     }
     else
       DBGLN("SHT41 did not answer");
+    i2cGuardStop();
     if (!shared)
       headerOff(shtBus);
   }
@@ -1102,6 +1163,8 @@ void readTask(uint8_t cmd, Reading &r)
     if (!gasWarming)
       return;
     selectBus(ensBus);
+    bootTrace.phase = PHASE_GAS_READ;  // gasStop() sets it back to idle
+    i2cGuardStart();
     uint8_t status = 0;
     bool fresh = false;
     for (uint8_t i = 0; i < 15 && !fresh; i++)  // a sample comes every second
@@ -1125,6 +1188,7 @@ void readTask(uint8_t cmd, Reading &r)
     }
     else
       r.ensStatus = ENS_NO_ANSWER;
+    i2cGuardStop();
     DBG("ENS160 heated ");
     DBG((millis() - gasSince) / 1000);
     DBGLN(" s");

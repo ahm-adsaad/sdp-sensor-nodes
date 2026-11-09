@@ -13,6 +13,18 @@ and picks the node's default slot (node N in slot N-1).
 task whatever its energy, and still reports the energy. Set it to 1 to skip a task that costs more than
 the energy left (it then sends a status packet instead). It replaces `TEST_IGNORE_ENERGY` (1 = 0 here).
 
+## EXPERIMENTAL: sensor-hang protection (2026-11-09, not tested on hardware - may need changing)
+
+Two switches at the top of each sketch, both on; set either to 0 to go back to the old behaviour.
+
+- `I2C_TIMEOUT_GUARD`: the Wire library has no timeout, so a sensor that holds the I2C bus froze the
+  node until the 8 s watchdog reset it (node 4's SHT41). Every sensor access is now timed by the RTC
+  PIT interrupt; after 3 s it ends the stuck transfer (TWI_MasterTransactionFinished), the read fails
+  as "no reading" and the header is switched off as usual.
+- `WATCHDOG_COUNTS_AS_SENSOR_FAULT`: a watchdog reset during a sensor access (J3, J4 or the gas read)
+  is pinned on that sensor like a brown-out, so after CULPRIT_AFTER (3) in a row it stays off instead
+  of rebooting the node on every task. Watchdog resets at other times (LMIC, sleep) are not counted.
+
 ## Radio: TDMA
 
 - One uplink per 60 s frame, only at the start of the node's own slot (4 slots of 15 s: node 1 slot 0,
