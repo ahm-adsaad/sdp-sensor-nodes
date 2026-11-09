@@ -22,7 +22,7 @@
 //  - Sensors are powered only for the task that needs them (see readTask): a temperature or
 //    humidity task switches the SHT41's header on in its reply slot, reads and switches it off; a
 //    gas task switches the ENS160's header on as soon as the task arrives, heats it until the reply
-//    slot one frame (30 s) later, reads and switches it off. Status packets switch nothing on and
+//    slot one frame (60 s) later, reads and switches it off. Status packets switch nothing on and
 //    carry voltage and energy only. Nothing is powered at boot: each sensor is found on J3 or J4 by
 //    the first task that needs it (see findSensor), and
 //    headers are switched on with a pulsed ramp found on the bench (see railRamp).
@@ -157,8 +157,10 @@ static osjob_t sendjob;
 // Defaults until the first downlink brings the real schedule. Keep them in step with
 // TDMA_SLOTS / TDMA_SLOT_S in task-service-tdma/TaskGenerator.py. The frame replaces the ALOHA
 // version's TX_INTERVAL: one uplink per frame, and a task waits up to a frame for its reply slot.
-const uint8_t DEFAULT_SLOTS = 2;
+const uint8_t DEFAULT_SLOTS = 4;      // nodes 1-4, one slot each: a 60 s frame
 const uint32_t DEFAULT_SLOT_MS = 15000;
+static_assert(NODE_NUMBER >= 1 && NODE_NUMBER <= DEFAULT_SLOTS,
+              "NODE_NUMBER has no slot in the default schedule");
 // At least 10 s (1 % duty cycle for a ~70 ms frame), at most 1800 s (LMIC and micros() wrapping)
 const uint32_t MIN_FRAME_MS = 10000;
 const uint32_t MAX_FRAME_MS = 1800000;
@@ -446,7 +448,7 @@ void sleepUntil(uint32_t target)
     }
     // The millis TCB runs on CLK_PER, so it also counts the 10-15 us or so awake after each PIT
     // wake (ISR, loop check, re-sleep), and the full tick is credited on top: millis() runs about
-    // 0.02 % fast here (5-7 ms early per 30 s frame, about 0.4 s in an 1866 s sleep; an estimate,
+    // 0.02 % fast here (10-14 ms early per 60 s frame, about 0.4 s in an 1866 s sleep; an estimate,
     // not measured). The server's per-frame slot correction absorbs it, and it is far below the
     // ULP's own drift.
     uint32_t us = ticks * usPerTick + usCarry;
@@ -838,8 +840,9 @@ void findSensor(bool sht)
 
 #if USE_ENS160
 // A gas task arrived: power the ENS160 and start its heater now, so it has heated for a whole
-// frame (30 s) by the reply slot. Its readings only count as valid after about 3 min (status 1,
-// warm-up, until then); the 30 s value is sent with that status, as decided for the gas task.
+// frame (60 s with 4 slots x 15 s) by the reply slot. Its readings only count as valid after about
+// 3 min (status 1, warm-up, until then); the 60 s value is sent with that status, as decided for the
+// gas task.
 void gasStart()
 {
   if (gasWarming)
