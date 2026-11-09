@@ -9,8 +9,9 @@ code; only the header comment and `NODE_NUMBER` differ (nodes 3 and 4, added 202
 ALOHA version). The node number is the sensor number the server knows the board by (`num_to_eui`)
 and picks the node's default slot (node N in slot N-1).
 
-**`TEST_IGNORE_ENERGY` is 1 in all four sketches** (bench tests, 2026-10-28): the node answers every task
-whatever its energy. Set it to 0 for real runs, so a task the node cannot afford is skipped.
+**`SKIP_UNAFFORDABLE_TASKS` is 0 in all four sketches** (team decision, 2026-11-09): the node does every
+task whatever its energy, and still reports the energy. Set it to 1 to skip a task that costs more than
+the energy left (it then sends a status packet instead). It replaces `TEST_IGNORE_ENERGY` (1 = 0 here).
 
 ## Radio: TDMA
 
@@ -22,6 +23,10 @@ whatever its energy. Set it to 0 for real runs, so a task the node cannot afford
   frame length in seconds, and a slot correction in ms relative to the uplink it answers. Frames up
   to 65 s use 6 bytes (1-byte frame, 16-bit correction); longer frames, up to 10 min, use 8 bytes
   (16-bit frame, 24-bit correction). The node accepts both; the server picks by frame length.
+- Bit 7 of the slot index byte marks the correction as signed (int16 / int24). A node that came in
+  late then gets a negative correction and waits a little less than a frame, instead of nearly two
+  frames (skipping one) as with the unsigned form. The server sends it only to the nodes in its
+  `SIGNED_CORRECTION_NODES`, so a node on older firmware never sees a negative value.
 - A task is answered in the node's next slot.
 - Every uplink ends with the node's energy, 0..200 units from the storage voltage:
   200 x (V^2 - 2.80^2) / (3.60^2 - 2.80^2), the AEM10330's cut-off and full levels (1 unit = 1.92 J
@@ -46,10 +51,10 @@ whatever its energy. Set it to 0 for real runs, so a task the node cannot afford
   only (temperature / humidity sent as 0x7FFE "not measured", gas status 0xFC).
 - Temperature / humidity task: the SHT41's header is switched on in the reply slot, read, switched off.
 - Gas task: the ENS160's header is switched on 60 s (GAS_WARMUP_MS) before the reply slot, or as
-  soon as the task arrives when the frame is shorter, and heats until the slot; that reading goes out with the ENS160's validity flag (warm-up until
-  about 3 min, "first hour" while the sensor itself is new). Then it is switched off. With
-  TEST_IGNORE_ENERGY 0, a gas task the node cannot afford is skipped as it arrives, before the heater
-  runs, and the reply slot sends a status packet.
+  soon as the task arrives when the frame is shorter, and heats until the slot; that reading goes out
+  with the ENS160's validity flag (warm-up until about 3 min, "first hour" while the sensor itself is
+  new). Then it is switched off. With SKIP_UNAFFORDABLE_TASKS 1, a gas task the node cannot afford is
+  skipped as it arrives, before the heater runs, and the reply slot sends a status packet.
 - Headers are switched on with a pulsed ramp (on-times 50 to 800 us in 5 us steps, 20 us off): a plain
   switch-on of the ENS160 board browned the node out every time. See `bench/sequence_test/RESULTS.md`.
 

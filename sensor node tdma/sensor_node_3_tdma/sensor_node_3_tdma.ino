@@ -11,8 +11,10 @@
 //  - The schedule arrives in every TDMA downlink (fPort 20), 6 bytes for frames up to 65 s:
 //      [0] command: 0x00 none (sync only), 0x01 humidity, 0x02 temperature, 0x03 gas,
 //          0x10 battery refill (ignored here: the energy is measured, not simulated)
-//      [1] this node's slot index  [2] slots per frame  [3] frame length, s
+//      [1] this node's slot index; bit 7 set = the correction below is signed (two's complement)
+//      [2] slots per frame  [3] frame length, s
 //      [4..5] slot correction, ms: after the uplink this downlink answers, wait one frame PLUS this
+//             (signed: minus, for a node that came in late, down to half a frame)
 //    or 8 bytes for longer frames (up to MAX_FRAME_MS, 10 min): [0..2] as above,
 //      [3..4] frame length, s (uint16)  [5..7] slot correction, ms (uint24)
 //    Until the first downlink arrives the node free-runs on DEFAULT_SLOTS / DEFAULT_SLOT_MS.
@@ -79,8 +81,9 @@
 #define USE_ENS160 1      // 0 = no ENS160 on the bus: gas bytes carry 0 ppb / 400 ppm / status 0xFF
 #define VSTO_SENSE 1      // 0 = the storage divider on H5 pin 1 is not fitted, status packets send 0 mV
 #define NODE_NUMBER 3     // sensor number on the server (num_to_eui); picks the default slot
-#define TEST_IGNORE_ENERGY 0 // 1 = TEST ONLY: never skip a task for lack of energy
-                              // after the bench tests. The real energy is still reported.
+#define SKIP_UNAFFORDABLE_TASKS 0  // 0 = do every task whatever the node's energy (team decision,
+                                   // 2026-11-09); 1 = skip a task that costs more than the energy
+                                   // left (taskCost). The real energy is reported either way.
 
 #if USE_ENS160
 #include "ens160_min.h"
@@ -310,6 +313,7 @@ const uint8_t CMD_GAS = 0x03;
 const uint8_t CMD_RESET_ENERGY = 0x10;  // simulated-battery refill for the Heltecs, ignored here
 const uint8_t TDMA_DOWNLINK_LEN = 6;       // frames up to 65 s
 const uint8_t TDMA_DOWNLINK_LONG_LEN = 8;  // longer frames: 16-bit frame, 24-bit correction
+const uint8_t SIGNED_CORRECTION_FLAG = 0x80;  // in byte 1: the correction is signed
 // A gas task powers the ENS160 this long before its reply slot (or at once when the frame is
 // shorter), so the heater runs about the same 60 s whatever the frame length.
 const uint32_t GAS_WARMUP_MS = 60000;
@@ -502,27 +506,34 @@ uint16_t taskCost(uint8_t cmd)
 }
 
 // A TDMA downlink answers the uplink that went on air at `uplinkAt`: the next slot is one frame
-// after it, plus the correction that pulls this node onto the server's slot grid.
+// after it, plus the correction that pulls this node onto the server's slot grid. A signed
+// correction (SIGNED_CORRECTION_FLAG) can be negative: a node that came in late waits a little
+// less than a frame instead of nearly two.
 void applySchedule(const uint8_t* d, uint8_t len, uint32_t uplinkAt)
 {
-  slotIndex = d[1];
+  slotIndex = d[1] & 0x7F;
+  bool isSigned = d[1] & SIGNED_CORRECTION_FLAG;
   numSlots = d[2];
-  uint32_t frame, correction;
+  uint32_t frame;
+  int32_t correction;
   if (len >= TDMA_DOWNLINK_LONG_LEN)
   {
     frame = (((uint32_t)d[3] << 8) | d[4]) * 1000UL;
-    correction = ((uint32_t)d[5] << 16) | ((uint32_t)d[6] << 8) | d[7];
+    uint32_t raw = ((uint32_t)d[5] << 16) | ((uint32_t)d[6] << 8) | d[7];
+    correction = (isSigned && (raw & 0x800000UL)) ? (int32_t)raw - 0x1000000L : (int32_t)raw;
   }
   else
   {
     frame = (uint32_t)d[3] * 1000UL;
-    correction = ((uint32_t)d[4] << 8) | d[5];
+    uint16_t raw = ((uint16_t)d[4] << 8) | d[5];
+    correction = isSigned ? (int32_t)(int16_t)raw : (int32_t)raw;
   }
   if (frame >= MIN_FRAME_MS && frame <= MAX_FRAME_MS)
     frameMs = frame;
-  if (correction > frameMs)
-    correction = 0;  // never more than a frame: anything larger is a corrupt downlink
-  nextSlotAt = uplinkAt + frameMs + correction;
+  // at most a frame later or half a frame earlier: anything else is a corrupt downlink
+  if (correction > (int32_t)frameMs || correction < -(int32_t)(frameMs / 2))
+    correction = 0;
+  nextSlotAt = uplinkAt + frameMs + (uint32_t)correction;
   resyncs++;
   synced = true;
 
@@ -1041,7 +1052,7 @@ void do_send(osjob_t* j)
 
   // Not enough energy for the task: skip it and send a status packet; the server sees the low
   // energy and gives the task to another node.
-  if (!TEST_IGNORE_ENERGY && pendingCommand != 0 && energy < taskCost(pendingCommand))
+  if (SKIP_UNAFFORDABLE_TASKS && pendingCommand != 0 && energy < taskCost(pendingCommand))
   {
     tasksSkipped++;
     DBG("Skipping task 0x");
@@ -1271,10 +1282,10 @@ void onEvent(ev_t ev)
           {
             // Checked now, before the heater runs (about 2.8 J for its GAS_WARMUP_MS), not only in
             // the reply slot (do_send), when it already has: a gas task the node cannot afford is
-            // skipped here and the next slot sends a status packet. With TEST_IGNORE_ENERGY 1 the
-            // heater starts as always, without the VSTO read (about 3 ms; the radio is asleep here).
-            uint16_t energy = TEST_IGNORE_ENERGY ? 0 : energyUnits(readVstoMv());
-            if (!TEST_IGNORE_ENERGY && energy < taskCost(CMD_GAS))
+            // skipped here and the next slot sends a status packet. With SKIP_UNAFFORDABLE_TASKS 0
+            // the heater starts as always, without the VSTO read (about 3 ms; the radio is asleep).
+            uint16_t energy = SKIP_UNAFFORDABLE_TASKS ? energyUnits(readVstoMv()) : 0;
+            if (SKIP_UNAFFORDABLE_TASKS && energy < taskCost(CMD_GAS))
             {
               tasksSkipped++;
               DBG("Skipping task 0x");
