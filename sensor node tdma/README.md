@@ -71,6 +71,17 @@ For four nodes it needs `TDMA_SLOTS = 4` (with `TDMA_SLOT_S = 15`, a 60 s frame)
 nodes 3 and 4 in `num_to_eui`; the two new devices are registered in ChirpStack like nodes 1 and 2.
 Workflow 3 (ALOHA) should be off for these nodes.
 
+DevEUIs (as ChirpStack shows them; `num_to_eui` on the server uses the same mapping). In `secrets.h`
+the DevEUI goes in byte-reversed (LSB first). AppKeys are not in this repo.
+
+| Node | DevEUI | DEVEUI in secrets.h (LSB first) | Sketch |
+|---|---|---|---|
+| 1 | `a382a57121e8bd08` | `0x08, 0xBD, 0xE8, 0x21, 0x71, 0xA5, 0x82, 0xA3` | `sensor_node_1_tdma` |
+| 2 | `3609e0641306e11c` | `0x1C, 0xE1, 0x06, 0x13, 0x64, 0xE0, 0x09, 0x36` | `sensor_node_2_tdma` |
+| 3 | `4f94ab2645e0a8a9` | `0xA9, 0xA8, 0xE0, 0x45, 0x26, 0xAB, 0x94, 0x4F` | `sensor_node_3_tdma` |
+| 4 | `1d911ad99f920e37` | `0x37, 0x0E, 0x92, 0x9F, 0xD9, 0x1A, 0x91, 0x1D` | `sensor_node_4_tdma` |
+| 5 | `8ddf8a6439434f88` | `0x88, 0x4F, 0x43, 0x39, 0x64, 0x8A, 0xDF, 0x8D` | none yet (registered in ChirpStack) |
+
 Build and flash exactly as the ALOHA sketches (MegaCoreX ATmega4809, 48 pin standard, internal 8 MHz,
 BOD 2.6 V, EEPROM retained, JTAG2UPDI). Each sketch folder needs its own `secrets.h`
 (copy `secrets.example.h` and fill in that node's DevEUI and AppKey from ChirpStack; secrets.h is kept

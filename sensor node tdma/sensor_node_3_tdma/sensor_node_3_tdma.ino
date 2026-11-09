@@ -1,7 +1,8 @@
 // TDMA sensor node 3: the same code as sensor_node_1_tdma.ino with NODE_NUMBER 3 (nodes 3 and 4
 // have no ALOHA version). Keys for node 3 go in secrets.h next to this file (see secrets.example.h).
-// Server sees this board as sensor 3: its DevEUI must be in num_to_eui on the server, and
-// task-service-tdma needs TDMA_SLOTS = 4. Do not run it while another device with the same keys is on.
+// DevEUI 4f94ab2645e0a8a9. Server sees this board as sensor 3: its DevEUI must be in num_to_eui on
+// the server, and task-service-tdma needs TDMA_SLOTS = 4. Do not run it while another device with
+// the same keys is on.
 //
 // TDMA: runs with task-service-tdma (port 5002) and Node-RED "Workflow 4 - TDMA", the same
 // protocol as heltec_v3_tdma_energy.ino. Disable Workflow 3 while it runs.
