@@ -18,8 +18,10 @@ whatever its energy. Set it to 0 for real runs, so a task the node cannot afford
   node 2 slot 1, node 3 slot 2, node 4 slot 3), so the uplinks and the gateway's answers never overlap.
   `DEFAULT_SLOTS` (4) and `DEFAULT_SLOT_MS` (15000) are the free-run schedule until the first downlink
   and must match `TDMA_SLOTS` / `TDMA_SLOT_S` on the server, which then sets the real schedule.
-- The schedule comes in every TDMA downlink (fPort 20, 6 bytes): task command, slot index, slots per
-  frame, frame length in seconds, and a slot correction in ms relative to the uplink it answers.
+- The schedule comes in every TDMA downlink (fPort 20): task command, slot index, slots per frame,
+  frame length in seconds, and a slot correction in ms relative to the uplink it answers. Frames up
+  to 65 s use 6 bytes (1-byte frame, 16-bit correction); longer frames, up to 10 min, use 8 bytes
+  (16-bit frame, 24-bit correction). The node accepts both; the server picks by frame length.
 - A task is answered in the node's next slot.
 - Every uplink ends with the node's energy, 0..200 units from the storage voltage:
   200 x (V^2 - 2.80^2) / (3.60^2 - 2.80^2), the AEM10330's cut-off and full levels (1 unit = 1.92 J
@@ -43,8 +45,8 @@ whatever its energy. Set it to 0 for real runs, so a task the node cannot afford
 - Nothing is powered between tasks. Status packets switch no sensor on and carry voltage and energy
   only (temperature / humidity sent as 0x7FFE "not measured", gas status 0xFC).
 - Temperature / humidity task: the SHT41's header is switched on in the reply slot, read, switched off.
-- Gas task: the ENS160's header is switched on as soon as the task arrives and heats until the reply
-  slot one frame (60 s) later; that reading goes out with the ENS160's validity flag (warm-up until
+- Gas task: the ENS160's header is switched on 60 s (GAS_WARMUP_MS) before the reply slot, or as
+  soon as the task arrives when the frame is shorter, and heats until the slot; that reading goes out with the ENS160's validity flag (warm-up until
   about 3 min, "first hour" while the sensor itself is new). Then it is switched off. With
   TEST_IGNORE_ENERGY 0, a gas task the node cannot afford is skipped as it arrives, before the heater
   runs, and the reply slot sends a status packet.

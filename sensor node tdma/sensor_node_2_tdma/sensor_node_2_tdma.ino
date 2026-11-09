@@ -6,11 +6,13 @@
 // protocol as heltec_v3_tdma_energy.ino. Disable Workflow 3 while it runs.
 //  - Time is cut into frames of numSlots slots; this node transmits only at the start of its own
 //    slot, once per frame, so the nodes' uplinks and the gateway's answers stay a slot apart.
-//  - The schedule arrives in every TDMA downlink (fPort 20, 6 bytes):
+//  - The schedule arrives in every TDMA downlink (fPort 20), 6 bytes for frames up to 65 s:
 //      [0] command: 0x00 none (sync only), 0x01 humidity, 0x02 temperature, 0x03 gas,
 //          0x10 battery refill (ignored here: the energy is measured, not simulated)
 //      [1] this node's slot index  [2] slots per frame  [3] frame length, s
 //      [4..5] slot correction, ms: after the uplink this downlink answers, wait one frame PLUS this
+//    or 8 bytes for longer frames (up to MAX_FRAME_MS, 10 min): [0..2] as above,
+//      [3..4] frame length, s (uint16)  [5..7] slot correction, ms (uint24)
 //    Until the first downlink arrives the node free-runs on DEFAULT_SLOTS / DEFAULT_SLOT_MS.
 //  - A task is answered in the node's NEXT slot, not straight away as in the ALOHA version.
 //  - Every uplink ends with the node's energy (uint16, 0..ENERGY_CAPACITY units), worked out from
@@ -21,10 +23,10 @@
 //    sleepUntil).
 //  - Sensors are powered only for the task that needs them (see readTask): a temperature or
 //    humidity task switches the SHT41's header on in its reply slot, reads and switches it off; a
-//    gas task switches the ENS160's header on as soon as the task arrives, heats it until the reply
-//    slot one frame (60 s) later, reads and switches it off. Status packets switch nothing on and
-//    carry voltage and energy only. Nothing is powered at boot: each sensor is found on J3 or J4 by
-//    the first task that needs it (see findSensor), and
+//    gas task switches the ENS160's header on GAS_WARMUP_MS (60 s) before its reply slot (at once
+//    when the frame is shorter), heats it until the slot, reads and switches it off. Status packets
+//    switch nothing on and carry voltage and energy only. Nothing is powered at boot: each sensor
+//    is found on J3 or J4 by the first task that needs it (see findSensor), and
 //    headers are switched on with a pulsed ramp found on the bench (see railRamp).
 // Network behaviour matches heltec_v3_node.ino: ADR off + SF7 after join, downlink
 // loss counter, packet types 0x00 status / 0x01-0x03 command responses. The status packet
@@ -75,7 +77,7 @@
 #define USE_ENS160 1      // 0 = no ENS160 on the bus: gas bytes carry 0 ppb / 400 ppm / status 0xFF
 #define VSTO_SENSE 1      // 0 = the storage divider on H5 pin 1 is not fitted, status packets send 0 mV
 #define NODE_NUMBER 2     // sensor number on the server (num_to_eui); picks the default slot
-#define TEST_IGNORE_ENERGY 1  // TEST ONLY (2026-10-28): never skip a task for lack of energy; set 0 again
+#define TEST_IGNORE_ENERGY 0  // 1 = TEST ONLY: never skip a task for lack of energy
                               // after the bench tests. The real energy is still reported.
 
 #if USE_ENS160
@@ -161,9 +163,10 @@ const uint8_t DEFAULT_SLOTS = 4;      // nodes 1-4, one slot each: a 60 s frame
 const uint32_t DEFAULT_SLOT_MS = 15000;
 static_assert(NODE_NUMBER >= 1 && NODE_NUMBER <= DEFAULT_SLOTS,
               "NODE_NUMBER has no slot in the default schedule");
-// At least 10 s (1 % duty cycle for a ~70 ms frame), at most 1800 s (LMIC and micros() wrapping)
+// At least 10 s (1 % duty cycle for a ~70 ms frame), at most 10 min. The longest sleep is a frame
+// plus a correction of up to a frame (20 min), well inside micros() wrapping (71 min) and pitTicks.
 const uint32_t MIN_FRAME_MS = 10000;
-const uint32_t MAX_FRAME_MS = 1800000;
+const uint32_t MAX_FRAME_MS = 600000;
 
 uint8_t slotIndex = NODE_NUMBER - 1;
 uint8_t numSlots = DEFAULT_SLOTS;
@@ -179,11 +182,11 @@ uint32_t slotsUsed = 0, resyncs = 0, tasksSkipped = 0;
 // sleepUntil() (the wait for a tick edge, then one to two ticks before the target) near 0.1 s
 // instead of about 2 s.
 const uint16_t PIT_TICKS_PER_S = 16;
-// pitTicks is 16 bits: the longest sleep, a MAX_FRAME_MS frame plus a slot correction of up to
-// 65.5 s (about 1866 s), must stay under 65535 ticks. That is 29856 ticks at 16 Hz, so a ULP clock
-// 10 % fast still fits; 64 Hz would not, and that sleep would never end (the watchdog is kicked
-// on every tick).
-static_assert(((MAX_FRAME_MS / 1000UL + 66UL) * PIT_TICKS_PER_S) < 65535UL,
+// pitTicks is 16 bits: the longest sleep, a MAX_FRAME_MS frame plus a slot correction of up to a
+// frame (1200 s), must stay under 65535 ticks. That is 19216 ticks at 16 Hz, so a ULP clock 10 %
+// fast still fits easily; the watchdog is kicked on every tick, so an overflowed sleep would
+// never end.
+static_assert(((2UL * MAX_FRAME_MS / 1000UL + 1UL) * PIT_TICKS_PER_S) < 65535UL,
               "pitTicks (16 bits) would overflow in the longest sleep");
 
 // Length of one RTC PIT tick in microseconds, measured against the main clock in setup()
@@ -303,7 +306,12 @@ const uint8_t CMD_HUMIDITY = 0x01;
 const uint8_t CMD_TEMPERATURE = 0x02;
 const uint8_t CMD_GAS = 0x03;
 const uint8_t CMD_RESET_ENERGY = 0x10;  // simulated-battery refill for the Heltecs, ignored here
-const uint8_t TDMA_DOWNLINK_LEN = 6;
+const uint8_t TDMA_DOWNLINK_LEN = 6;       // frames up to 65 s
+const uint8_t TDMA_DOWNLINK_LONG_LEN = 8;  // longer frames: 16-bit frame, 24-bit correction
+// A gas task powers the ENS160 this long before its reply slot (or at once when the frame is
+// shorter), so the heater runs about the same 60 s whatever the frame length.
+const uint32_t GAS_WARMUP_MS = 60000;
+bool gasStartPending = false;              // a gas task is waiting for its warm-up to begin
 
 // Uplink packet types (first payload byte, uplinks on fPort 1):
 //   PKT_STATUS (0x00) - routine periodic full reading. NOT a reply to a command,
@@ -430,8 +438,8 @@ void sleepUntil(uint32_t target)
     watchdogKick();
   }
 
-  // 32 bits are enough: left is at most about 1866000 ms (see PIT_TICKS_PER_S), so left * 1000 is
-  // at most 1.87e9 us, and ticks * usPerTick + usCarry below stays under that (ticks is
+  // 32 bits are enough: left is at most about 1200000 ms (see PIT_TICKS_PER_S), so left * 1000 is
+  // at most 1.2e9 us, and ticks * usPerTick + usCarry below stays under that (ticks is
   // left * 1000 / usPerTick, less one; usCarry is under 1000).
   int32_t left = (int32_t)(target - millis());
   uint32_t ticks = left > 0 ? (uint32_t)left * 1000UL / usPerTick : 0;
@@ -493,14 +501,25 @@ uint16_t taskCost(uint8_t cmd)
 
 // A TDMA downlink answers the uplink that went on air at `uplinkAt`: the next slot is one frame
 // after it, plus the correction that pulls this node onto the server's slot grid.
-void applySchedule(const uint8_t* d, uint32_t uplinkAt)
+void applySchedule(const uint8_t* d, uint8_t len, uint32_t uplinkAt)
 {
   slotIndex = d[1];
   numSlots = d[2];
-  uint32_t frame = (uint32_t)d[3] * 1000UL;
+  uint32_t frame, correction;
+  if (len >= TDMA_DOWNLINK_LONG_LEN)
+  {
+    frame = (((uint32_t)d[3] << 8) | d[4]) * 1000UL;
+    correction = ((uint32_t)d[5] << 16) | ((uint32_t)d[6] << 8) | d[7];
+  }
+  else
+  {
+    frame = (uint32_t)d[3] * 1000UL;
+    correction = ((uint32_t)d[4] << 8) | d[5];
+  }
   if (frame >= MIN_FRAME_MS && frame <= MAX_FRAME_MS)
     frameMs = frame;
-  uint32_t correction = ((uint32_t)d[4] << 8) | d[5];
+  if (correction > frameMs)
+    correction = 0;  // never more than a frame: anything larger is a corrupt downlink
   nextSlotAt = uplinkAt + frameMs + correction;
   resyncs++;
   synced = true;
@@ -839,10 +858,10 @@ void findSensor(bool sht)
 }
 
 #if USE_ENS160
-// A gas task arrived: power the ENS160 and start its heater now, so it has heated for a whole
-// frame (60 s with 4 slots x 15 s) by the reply slot. Its readings only count as valid after about
-// 3 min (status 1, warm-up, until then); the 60 s value is sent with that status, as decided for the
-// gas task.
+// A gas task is due: power the ENS160 and start its heater, GAS_WARMUP_MS (60 s) before the reply
+// slot, or at once when the frame is shorter (loop() calls this). Its readings only count as valid
+// after about 3 min (status 1, warm-up, until then); the 60 s value is sent with that status, as
+// decided for the gas task.
 void gasStart()
 {
   if (gasWarming)
@@ -962,7 +981,7 @@ void readTask(uint8_t cmd, Reading &r)
     else if (ens160ReadData(r.aqi, r.tvoc, r.eco2))
     {
       r.ensStatus = (status & ENS160_STATUS_VALIDITY_gm) >> ENS160_STATUS_VALIDITY_gp;
-      bootTrace.fails[2] = 0;  // the heater ran a whole frame without a brown-out
+      bootTrace.fails[2] = 0;  // the heater ran its warm-up without a brown-out
     }
     else
       r.ensStatus = ENS_NO_ANSWER;
@@ -1248,10 +1267,10 @@ void onEvent(ev_t ev)
 #if USE_ENS160
           if (cmd == CMD_GAS)
           {
-            // Checked now, before the heater runs a whole frame (about 2.8 J), not only in the reply
-            // slot (do_send), when it already has: a gas task the node cannot afford is skipped here
-            // and the next slot sends a status packet. With TEST_IGNORE_ENERGY 1 the heater starts
-            // as always, without the VSTO read (about 3 ms; the radio is asleep here).
+            // Checked now, before the heater runs (about 2.8 J for its GAS_WARMUP_MS), not only in
+            // the reply slot (do_send), when it already has: a gas task the node cannot afford is
+            // skipped here and the next slot sends a status packet. With TEST_IGNORE_ENERGY 1 the
+            // heater starts as always, without the VSTO read (about 3 ms; the radio is asleep here).
             uint16_t energy = TEST_IGNORE_ENERGY ? 0 : energyUnits(readVstoMv());
             if (!TEST_IGNORE_ENERGY && energy < taskCost(CMD_GAS))
             {
@@ -1265,12 +1284,12 @@ void onEvent(ev_t ev)
               pendingCommand = 0;
             }
             else
-              gasStart();  // heat from now until the reply slot
+              gasStartPending = true;  // loop() starts the heater GAS_WARMUP_MS before the slot
           }
 #endif
           else if (cmd == CMD_RESET_ENERGY)
             DBGLN("  battery refill ignored: this node reports its real energy");
-          applySchedule(d, txStartedAt);
+          applySchedule(d, LMIC.dataLen, txStartedAt);
           scheduled = true;
         }
       }
@@ -1440,6 +1459,23 @@ void loop()
     // a slot already passed (a late uplink, a long LMIC wait) is skipped, not sent late
     while ((int32_t)(nextSlotAt - millis()) < 50)
       nextSlotAt += frameMs;
+#if USE_ENS160
+    if (gasStartPending)
+    {
+      // heat for GAS_WARMUP_MS before the reply slot, or from now when the frame is shorter
+      gasStartPending = false;
+      uint32_t warmAt = nextSlotAt - GAS_WARMUP_MS;
+      if ((int32_t)(warmAt - millis()) > 0)
+      {
+        DBG("Sleeping ");
+        DBG((int32_t)(warmAt - millis()));
+        DBGLN(" ms until the gas warm-up");
+        sleepUntil(warmAt);
+      }
+      if (pendingCommand == CMD_GAS)
+        gasStart();
+    }
+#endif
     DBG("Sleeping ");
     DBG((int32_t)(nextSlotAt - millis()));
     DBGLN(" ms until the slot");
