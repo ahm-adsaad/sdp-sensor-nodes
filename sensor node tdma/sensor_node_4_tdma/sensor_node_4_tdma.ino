@@ -1,75 +1,31 @@
-// TDMA sensor node 4: the same code as sensor_node_1_tdma.ino with NODE_NUMBER 4 (nodes 3 and 4
-// have no ALOHA version), except that temperature / humidity come from a DHT11 on J3 (USE_DHT11).
-// Keys for node 4 go in secrets.h next to this file (see secrets.example.h).
-// DevEUI 1d911ad99f920e37. Server sees this board as sensor 4: its DevEUI must be in num_to_eui on
-// the server, and task-service-tdma needs TDMA_SLOTS = 4. Do not run it while another device with
-// the same keys is on.
+// TDMA sensor node 4 (ATmega4809 + SX1276 w/ LMIC). SHT41 + ENS160 + storage voltage.
+// DevEUI 1d911ad99f920e37, the server sees this board as sensor 4. Keys are in secrets.h.
+// Dont run 2 devices w/ the same keys at the same time.
+// Same code as node 1 except temp / hum come from a DHT11 on J3 (USE_DHT11) instead of the SHT41.
 //
-// TDMA: runs with task-service-tdma (port 5002) and Node-RED "Workflow 4 - TDMA", the same
-// protocol as heltec_v3_tdma_energy.ino. Disable Workflow 3 while it runs.
-//  - Time is cut into frames of numSlots slots; this node transmits only at the start of its own
-//    slot, once per frame, so the nodes' uplinks and the gateway's answers stay a slot apart.
-//  - The schedule arrives in every TDMA downlink (fPort 20), 6 bytes for frames up to 65 s:
-//      [0] command: 0x00 none (sync only), 0x01 humidity, 0x02 temperature, 0x03 gas,
-//          0x10 battery refill (ignored here: the energy is measured, not simulated)
-//      [1] this node's slot index; bit 7 set = the correction below is signed (two's complement)
-//      [2] slots per frame  [3] frame length, s
-//      [4..5] slot correction, ms: after the uplink this downlink answers, wait one frame PLUS this
-//             (signed: minus, for a node that came in late, down to half a frame)
-//    or 8 bytes for longer frames (up to MAX_FRAME_MS, 10 min): [0..2] as above,
-//      [3..4] frame length, s (uint16)  [5..7] slot correction, ms (uint24)
-//    Until the first downlink arrives the node free-runs on DEFAULT_SLOTS / DEFAULT_SLOT_MS.
-//  - A task is answered in the node's NEXT slot, not straight away as in the ALOHA version.
-//  - Every uplink ends with the node's energy (uint16, 0..ENERGY_CAPACITY units), worked out from
-//    the storage voltage (see energyUnits); a task the node cannot afford is skipped and a status
-//    packet goes instead, so the server reassigns it.
-//  - Power-down between slots as before, and between join attempts and LMIC waits (see loop()),
-//    timed to the millisecond: the sleep clock is measured against the main clock at boot (see
-//    sleepUntil).
-//  - Sensors are powered only for the task that needs them (see readTask): a temperature or
-//    humidity task switches the SHT41's header on in its reply slot, reads and switches it off; a
-//    gas task switches the ENS160's header on GAS_WARMUP_MS (60 s) before its reply slot (at once
-//    when the frame is shorter), heats it until the slot, reads and switches it off. Status packets
-//    switch nothing on and carry voltage and energy only. Nothing is powered at boot: each sensor
-//    is found on J3 or J4 by the first task that needs it (see findSensor), and
-//    headers are switched on with a pulsed ramp found on the bench (see railRamp).
-// Network behaviour matches heltec_v3_node.ino: ADR off + SF7 after join, downlink
-// loss counter, packet types 0x00 status / 0x01-0x03 command responses. The status packet
-// layout is under PKT_STATUS; the ChirpStack decoder is chirpstack_codec.js one folder up.
+// How it works (short version):
+//  - time is split into frames, each node gets 1 slot per frame and only tx's in its own slot
+//  - every TDMA downlink (fPort 20) has the schedule + maybe a task:
+//      6 bytes: [0] cmd  [1] slot idx  [2] num slots  [3] frame len (s)  [4..5] slot correction (ms)
+//      8 bytes (frames > 65 s): [0..2] same  [3..4] frame len (s)  [5..7] slot correction (ms)
+//      cmd: 0x00 nothing (just sync), 0x01 hum, 0x02 temp, 0x03 gas, 0x10 battery refill (ignored)
+//      bit 7 of byte [1] set = the correction is signed (can be negative, down to -half a frame)
+//  - no downlink yet -> node runs on DEFAULT_SLOTS / DEFAULT_SLOT_MS
+//  - a task is answered in the NEXT slot, not right away
+//  - last 2 bytes of every uplink = energy (0..ENERGY_CAPACITY), calculated from the storage voltage
+//  - w/ SKIP_UNAFFORDABLE_TASKS 1: not enough energy for a task -> skip it and send a status pkt
+//  - sensors only get power when a task needs them, mcu is in power-down between slots
 //
-// Build: Arduino IDE, MegaCoreX > ATmega4809, Pinout "48 pin standard", Clock "Internal 8 MHz",
-// BOD "2.6V", EEPROM "retained", Programmer "JTAG2UPDI", flash with Sketch > Upload Using Programmer.
-// Libraries: MCCI LoRaWAN LMIC library 6.0.1, Adafruit SHT4x Library 1.0.5,
-// Rocket Scream LowPowerAVRZero 1.0.0. The ENS160 driver is ens160_min.h in this folder
-// (register level over Wire, nothing to install).
-// MCCI_LoRaWAN_LMIC_library/project_config/lmic_project_config.h must contain exactly:
+// Build: Arduino IDE, MegaCoreX > ATmega4809, pinout "48 pin standard", clock "Internal 8 MHz",
+// BOD "2.6V", EEPROM "retained", programmer "JTAG2UPDI", flash w/ Sketch > Upload Using Programmer.
+// Libs: MCCI LoRaWAN LMIC library 6.0.1, Adafruit SHT4x Library 1.0.5,
+// Rocket Scream LowPowerAVRZero 1.0.0. ENS160 driver is ens160_min.h in this folder.
+// MCCI_LoRaWAN_LMIC_library/project_config/lmic_project_config.h has to be exactly:
 //   #define CFG_eu868 1
 //   #define CFG_sx1276_radio 1
 //   #define LMIC_ENABLE_arbitrary_clock_error 1
 //   #define DISABLE_PING
 //   #define DISABLE_BEACONS
-// Compile-tested 2026-10-28 with MegaCoreX 1.2.0 and the versions above; not yet run on a board
-// with all three (SHT41, ENS160, divider) fitted.
-//
-// Join robustness. On 2026-10-19 a rev-2 board running from storage brown-out reset on every
-// JoinRequest (reset flags 0x02): LMIC sends joins at 16 dBm on PA_BOOST and the AEM10330
-// LOAD rail cannot carry that. Four measures, see TX_POWER_DBM, Settings and onEvent():
-//  - every frame, joins included, is capped at the stored TX power cap (starts at TX_POWER_DBM);
-//  - the cap learns: a brown-out reset that hits while the radio is transmitting lowers the
-//    cap by TX_POWER_STEP_DB (floor TX_POWER_MIN_DBM) and the new cap is kept in EEPROM;
-//  - the ENS160 (about 29 mA while gas sensing) is only powered for gas tasks, never during a join;
-//  - the OTAA DevNonce continues from EEPROM across resets, so ChirpStack never sees a
-//    JoinRequest with a nonce it already used (LMIC alone restarts from a random value).
-//
-// Freeze fix (2026-10-20). After a downlink that carries MAC commands, LMIC queues its own uplink
-// with the MAC answers (OP_POLL), and it only transmits while loop() keeps running. The old code
-// checked OP_TXRXPEND alone, so it went back to sleep, or called LMIC_setTxData2, got
-// LMIC_ERROR_TX_BUSY and slept a whole cycle; the board stopped sending for good (seen on node 1).
-// lmicTxBusy() checks OP_TXRXPEND | OP_TXDATA | OP_POLL | OP_JOINING: do_send() waits and retries
-// every 1 s while it is set, a failed LMIC_setTxData2 retries in 1 s instead of sleeping, and
-// loop() only sleeps once it is clear, except bounded naps (NAP_MS) that end at least 1 s before
-// LMIC's next timed job; never a slot sleep or a send.
-// The OTAA keys are in secrets.h next to this file, committed with the sketch (2026-11-09).
 #include <Wire.h>
 #include <SPI.h>
 #include <EEPROM.h>
@@ -78,21 +34,19 @@
 #include <RocketScream_LowPowerAVRZero.h>
 #include <Adafruit_SHT4x.h>
 
-#define DEBUG 1           // 0 for battery runs: no serial output and the UART pins are parked
-#define USE_ENS160 1      // 0 = no ENS160 on the bus: gas bytes carry 0 ppb / 400 ppm / status 0xFF
-#define USE_DHT11 1       // node 4: a 3-pin DHT11 on J3 (data on SDA_A, PA2) replaces the SHT41 for
-                          // temperature / humidity; the ENS160 is then looked for on J4 only
-#define VSTO_SENSE 1      // 0 = the storage divider on H5 pin 1 is not fitted, status packets send 0 mV
-#define NODE_NUMBER 4     // sensor number on the server (num_to_eui); picks the default slot
-#define SKIP_UNAFFORDABLE_TASKS 0  // 0 = do every task whatever the node's energy (team decision,
-                                   // 2026-11-09); 1 = skip a task that costs more than the energy
-                                   // left (taskCost). The real energy is reported either way.
+#define DEBUG 1           // 1 = serial prints, 0 = no prints (use 0 on battery)
+#define USE_ENS160 1      // 0 = no ENS160 connected, gas reply is 0 ppb / 400 ppm / status 0xFF
+#define USE_DHT11 1       // node 4: DHT11 on J3 (data on PA2) does temp / hum instead of the SHT41,
+                          // and the ENS160 is only looked for on J4
+#define VSTO_SENSE 1      // 0 = no voltage divider on H5 pin 1, voltage is sent as 0 mV
+#define NODE_NUMBER 4     // sensor number on the server, also picks the default slot
+#define SKIP_UNAFFORDABLE_TASKS 0  // 0 = do every task no matter the energy, 1 = skip a task that
+                                   // costs more than the energy left. energy is sent either way
 
-// ---- EXPERIMENTAL (2026-11-09): sensor-hang protection. NOT TESTED ON HARDWARE YET - the values
-// and the approach may need changing. Set either to 0 to go back to the old behaviour.
-#define I2C_TIMEOUT_GUARD 1                // abort a sensor's I2C access that runs over 3 s
-#define WATCHDOG_COUNTS_AS_SENSOR_FAULT 1  // a watchdog reset during a sensor access counts as
-                                           // that sensor's fault, like a brown-out there
+// EXPERIMENTAL, not tested on hardware yet. set to 0 to turn off
+#define I2C_TIMEOUT_GUARD 1                // stop a sensor i2c access that takes more than 3 s
+#define WATCHDOG_COUNTS_AS_SENSOR_FAULT 1  // watchdog reset during a sensor access = that sensor's
+                                           // fault, same as a brown-out there
 
 #if USE_ENS160
 #include "ens160_min.h"
@@ -100,6 +54,7 @@
 
 #include "secrets.h"
 
+// stop the build if the lmic config or the clock is wrong
 #if !defined(CFG_eu868) || !defined(CFG_sx1276_radio)
 #error "lmic_project_config.h must define CFG_eu868 and CFG_sx1276_radio (see the top of this sketch)"
 #endif
@@ -110,6 +65,7 @@
 #error "Select Tools > Clock > Internal 8 MHz: 16 MHz is outside the ATmega4809 safe operating area at 3.3 V"
 #endif
 
+// debug prints, they turn into nothing when DEBUG is 0
 #if DEBUG
 #define DBG(...) Serial.print(__VA_ARGS__)
 #define DBGLN(...) Serial.println(__VA_ARGS__)
@@ -118,41 +74,36 @@
 #define DBGLN(...) do {} while (0)
 #endif
 
-Adafruit_SHT4x sht4 = Adafruit_SHT4x();
+Adafruit_SHT4x sht4 = Adafruit_SHT4x();  // temp + hum sensor
 
 #if USE_ENS160
-bool ens160Found = false;    // answered its part id (findSensor)
-bool gasWarming = false;     // powered and heating for a gas task, read in the next slot (gasStart)
-uint32_t gasSince = 0;       // millis() when it started heating
+bool ens160Found = false;    // true once the ENS160 answered
+bool gasWarming = false;     // true while the ENS160 is on and heating for a gas task
+uint32_t gasSince = 0;       // millis() when the heating started
 #endif
 
+// lmic calls these to get the keys (from secrets.h)
 void os_getArtEui(u1_t* buf) { memcpy_P(buf, APPEUI, 8); }
 void os_getDevEui(u1_t* buf) { memcpy_P(buf, DEVEUI, 8); }
 void os_getDevKey(u1_t* buf) { memcpy_P(buf, APPKEY, 16); }
 
-// Board pins (PCB rev 2; the radio pins, PD6 and PD7 are the same on rev 1)
-const uint8_t PIN_RAIL_A = PIN_PD6;  // U8 ENA: VCC_SENS_A on J3, I2C bus A (PA2/PA3)
-const uint8_t PIN_RAIL_B = PIN_PC1;  // U8 ENB: VCC_SENS_B on J4, I2C bus B (PC2/PC3)
-const uint8_t PIN_LED = PIN_PD7;     // never use LED_BUILTIN: MegaCoreX maps it to PA7 = radio NSS
-const uint8_t PIN_VSTO = PIN_PD0;    // H5 pin 1 = AIN0: storage voltage through the R1/R2 divider
+// board pins (PCB rev 2)
+const uint8_t PIN_RAIL_A = PIN_PD6;  // power enable for header J3 (i2c on PA2/PA3)
+const uint8_t PIN_RAIL_B = PIN_PC1;  // power enable for header J4 (i2c on PC2/PC3)
+const uint8_t PIN_LED = PIN_PD7;     // dont use LED_BUILTIN, on MegaCoreX thats PA7 = radio NSS
+const uint8_t PIN_VSTO = PIN_PD0;    // adc pin for the storage voltage (through the divider)
 
-// Both sensor headers are used. The ATmega4809 has one TWI, which reaches J3 on its default pins
-// (PA2/PA3) or J4 on the alternate ones (PC2/PC3, Wire.swap(1)). Nothing is powered at boot: the
-// first task that needs a sensor looks for it on J3, then J4 (findSensor), so it does not matter
-// which one is plugged where; selectBus() moves the TWI to a sensor's header before every access.
-const uint8_t BUS_J3 = 0;  // Wire.swap() states
-const uint8_t BUS_J4 = 1;
-uint8_t currentBus = 0xFF;  // none: Wire not started
-uint8_t shtBus = BUS_J3;
-uint8_t ensBus = BUS_J3;
-bool shtFound = false;
-bool shtSearched = false;   // looked for once per boot; a missing sensor is not searched again
-bool ensSearched = false;
+// the mcu has 1 i2c, it can be on J3 (default pins) or J4 (Wire.swap(1))
+const uint8_t BUS_J3 = 0;   // Wire.swap() value for J3
+const uint8_t BUS_J4 = 1;   // Wire.swap() value for J4
+uint8_t currentBus = 0xFF;  // which header the i2c is on rn, 0xFF = none
+uint8_t shtBus = BUS_J3;    // header the SHT41 was found on
+uint8_t ensBus = BUS_J3;    // header the ENS160 was found on
+bool shtFound = false;      // true once the SHT41 answered
+bool shtSearched = false;   // alrd looked for the SHT41 this boot (only search once)
+bool ensSearched = false;   // alrd looked for the ENS160 this boot
 
-// Pins this sketch does not drive: PMIC status PB2-PB4 (not read yet), header H5 (PD0-PD4, PC7)
-// and the unconnected ones. Their digital input buffers are switched off so a floating level
-// cannot draw current. PD0 stays on the list: the ADC does not use the digital buffer, and a
-// buffer sitting at half the storage voltage would draw current.
+// pins we dont use, their input buffers get turned off to save power
 const uint8_t UNUSED_PINS[] = {
   PIN_PB0, PIN_PB1, PIN_PB2, PIN_PB3, PIN_PB4, PIN_PB5,
   PIN_PC0, PIN_PC4, PIN_PC5, PIN_PC6, PIN_PC7,
@@ -160,6 +111,7 @@ const uint8_t UNUSED_PINS[] = {
   PIN_PE0, PIN_PE1, PIN_PE2, PIN_PE3, PIN_PF0, PIN_PF1,
 };
 
+// radio pins for lmic
 const lmic_pinmap lmic_pins = {
   .nss = PIN_PA7,
   .rxtx = LMIC_UNUSED_PIN,
@@ -167,267 +119,201 @@ const lmic_pinmap lmic_pins = {
   .dio = { PIN_PF2, PIN_PF4, PIN_PF5 },
 };
 
-static osjob_t sendjob;
+static osjob_t sendjob;  // lmic job that runs do_send
 
 // ---- TDMA schedule ----
-// Defaults until the first downlink brings the real schedule. Keep them in step with
-// TDMA_SLOTS / TDMA_SLOT_S in task-service-tdma/TaskGenerator.py. The frame replaces the ALOHA
-// version's TX_INTERVAL: one uplink per frame, and a task waits up to a frame for its reply slot.
-const uint8_t DEFAULT_SLOTS = 4;      // nodes 1-4, one slot each: a 60 s frame
-const uint32_t DEFAULT_SLOT_MS = 15000;
+// defaults until the 1st downlink, keep same as TDMA_SLOTS / TDMA_SLOT_S in TaskGenerator.py
+const uint8_t DEFAULT_SLOTS = 4;         // 4 nodes, 1 slot each
+const uint32_t DEFAULT_SLOT_MS = 15000;  // 15 s per slot -> 60 s frame
 static_assert(NODE_NUMBER >= 1 && NODE_NUMBER <= DEFAULT_SLOTS,
               "NODE_NUMBER has no slot in the default schedule");
-// At least 10 s (1 % duty cycle for a ~70 ms frame), at most 10 min. The longest sleep is a frame
-// plus a correction of up to a frame (20 min), well inside micros() wrapping (71 min) and pitTicks.
-const uint32_t MIN_FRAME_MS = 10000;
-const uint32_t MAX_FRAME_MS = 600000;
+const uint32_t MIN_FRAME_MS = 10000;   // shortest frame we accept (duty cycle)
+const uint32_t MAX_FRAME_MS = 600000;  // longest frame we accept (10 min)
 
-uint8_t slotIndex = NODE_NUMBER - 1;
-uint8_t numSlots = DEFAULT_SLOTS;
-uint32_t frameMs = DEFAULT_SLOTS * DEFAULT_SLOT_MS;
-uint32_t nextSlotAt = 0;          // millis() of this node's next slot start
-uint32_t txStartedAt = 0;         // millis() when the current data uplink went on air
-bool dataFrameInFlight = false;   // our uplink, not one LMIC queued for MAC answers
-bool synced = false;
-uint32_t slotsUsed = 0, resyncs = 0, tasksSkipped = 0;
+uint8_t slotIndex = NODE_NUMBER - 1;                 // our slot, 0 based
+uint8_t numSlots = DEFAULT_SLOTS;                    // slots per frame
+uint32_t frameMs = DEFAULT_SLOTS * DEFAULT_SLOT_MS;  // frame length in ms
+uint32_t nextSlotAt = 0;          // millis() of our next slot
+uint32_t txStartedAt = 0;         // millis() when our last data uplink started tx
+bool dataFrameInFlight = false;   // true while OUR uplink is being sent (not lmic's own MAC one)
+bool synced = false;              // got a schedule from the server at least once
+uint32_t slotsUsed = 0, resyncs = 0, tasksSkipped = 0;  // counters for the debug prints
 
-// Sleep clock: the RTC PIT runs from the 1.024 kHz ULP clock with RTC_PERIOD_CYC64_gc (setup()),
-// and 1024 Hz / 64 is 16 Hz, so one tick is nominally 62500 us. A short tick keeps the idle part of
-// sleepUntil() (the wait for a tick edge, then one to two ticks before the target) near 0.1 s
-// instead of about 2 s.
+// sleep timer: RTC PIT from the 1.024 kHz ULP clock / 64 = 16 ticks per sec
 const uint16_t PIT_TICKS_PER_S = 16;
-// pitTicks is 16 bits: the longest sleep, a MAX_FRAME_MS frame plus a slot correction of up to a
-// frame (1200 s), must stay under 65535 ticks. That is 19216 ticks at 16 Hz, so a ULP clock 10 %
-// fast still fits easily; the watchdog is kicked on every tick, so an overflowed sleep would
-// never end.
+// pitTicks is 16 bit so the longest sleep has to fit in it
 static_assert(((2UL * MAX_FRAME_MS / 1000UL + 1UL) * PIT_TICKS_PER_S) < 65535UL,
               "pitTicks (16 bits) would overflow in the longest sleep");
 
-// Length of one RTC PIT tick in microseconds, measured against the main clock in setup()
-// (nominally 1000000 / PIT_TICKS_PER_S = 62500 us, but the ULP oscillator is only good to +-10 %).
+// length of 1 PIT tick in us, measured in setup() bc the ULP clock is only +-10 % accurate
 uint32_t usPerTick = 1000000UL / PIT_TICKS_PER_S;
 
-// Transmit power cap (dBm) for every frame, joins included. On rev 2 the whole 3.3 V rail is the
-// AEM10330's LOAD output, which gives about 60 mA with the storage at 2.8-3.0 V and 72-76 mA
-// at 3.1-3.6 V (DS v1.5.0 Table 6, Fig. 7). LMIC sends joins at 16 dBm on PA_BOOST, and the
-// SX1276 draws 87 mA at 17 dBm, so the rail sagged and the chip brown-out reset on every
-// JoinRequest (reset flags 0x02). TX_POWER_DBM is where the cap starts after a flash; a
-// brown-out during a transmission then takes TX_POWER_STEP_DB off it, down to TX_POWER_MIN_DBM,
-// and the result stays in EEPROM (see Settings). 10 dBm is a starting point, not a measured
-// limit: PA_BOOST current per dBm on the Vollgo module is still to be measured with the PPK2.
-// Changing TX_POWER_DBM restarts the learning from the new value. LMIC accepts 2..17 on PA_BOOST.
-const int8_t TX_POWER_DBM = 10;
-const int8_t TX_POWER_MIN_DBM = 2;
-const int8_t TX_POWER_STEP_DB = 2;
+// tx power limit in dBm for every frame (joins too). the 3.3 V rail cant give enough current for
+// full power so we start at 10 and go lower if a tx causes a brown-out
+const int8_t TX_POWER_DBM = 10;      // starting limit
+const int8_t TX_POWER_MIN_DBM = 2;   // never go below this
+const int8_t TX_POWER_STEP_DB = 2;   // how much to lower after a brown-out during tx
 static_assert(TX_POWER_DBM >= 2 && TX_POWER_DBM <= 17, "TX_POWER_DBM must be 2..17 dBm");
 static_assert(TX_POWER_MIN_DBM >= 2 && TX_POWER_MIN_DBM <= TX_POWER_DBM, "TX_POWER_MIN_DBM must be 2..TX_POWER_DBM");
 static_assert(TX_POWER_STEP_DB >= 1, "TX_POWER_STEP_DB must be at least 1 dB");
 
-// What survives a reset, in EEPROM at SETTINGS_ADDR. Written only when something changes:
-// on first boot, on a brown-out during a transmission, and once per JoinRequest (DevNonce).
-// A flash with Tools > EEPROM "retained" keeps it; "not retained" or a changed TX_POWER_DBM
-// starts over.
+// stuff saved in EEPROM so it survives a reset
 struct Settings
 {
-  uint32_t magic;      // SETTINGS_MAGIC, anything else means blank or an older layout
-  int8_t txPowerMax;   // the TX_POWER_DBM the cap was learned under
-  int8_t txPowerCap;   // the cap in use, dBm
-  uint8_t brownOuts;   // brown-out resets seen during a transmission, saturates at 255
-  uint16_t devNonce;   // the next OTAA DevNonce
+  uint32_t magic;      // SETTINGS_MAGIC if the data is valid
+  int8_t txPowerMax;   // the TX_POWER_DBM this was saved with
+  int8_t txPowerCap;   // current tx power limit, dBm
+  uint8_t brownOuts;   // num of brown-outs during tx (max 255)
+  uint16_t devNonce;   // next join nonce
 };
-const uint32_t SETTINGS_MAGIC = 0x4E4F4431;  // "NOD1", layout 1
-const int SETTINGS_ADDR = 0;
+const uint32_t SETTINGS_MAGIC = 0x4E4F4431;  // "NOD1"
+const int SETTINGS_ADDR = 0;                 // EEPROM address
 Settings settings;
 
-// What the sketch was doing when the last reset hit. The .noinit section is not cleared at
-// start-up, so this survives a brown-out, watchdog or software reset; after a power-on the
-// magic is (almost surely) wrong and the record is ignored.
+// what the node was doing when it reset. .noinit = not cleared at startup, so it survives a
+// brown-out / watchdog reset (not a power cycle)
 struct BootTrace
 {
-  uint32_t magic;
-  uint8_t phase;
-  uint8_t brownOutRun;  // brown-out resets in a row, see brownOutBackOff()
-  uint8_t culprits;     // CULPRIT_* bits: what browned the node out and stays off
-  uint8_t gasOn;        // the ENS160 hot plate is heating (gas sensing)
-  uint8_t fails[3];     // brown-outs in a row pinned on J3, J4, the gas heater (see CULPRIT_AFTER)
+  uint32_t magic;       // TRACE_MAGIC if the data is valid
+  uint8_t phase;        // PHASE_* below
+  uint8_t brownOutRun;  // brown-outs in a row
+  uint8_t culprits;     // CULPRIT_* bits: parts that caused brown-outs and stay off
+  uint8_t gasOn;        // 1 while the ENS160 heater is on
+  uint8_t fails[3];     // brown-outs in a row caused by J3, J4, gas heater
 };
 const uint32_t TRACE_MAGIC = 0x54524143;  // "TRAC"
-const uint8_t PHASE_IDLE = 0;
-const uint8_t PHASE_TX = 1;      // from EV_TXSTART until the radio is done transmitting
-const uint8_t PHASE_RAIL_A = 2;  // switching on VCC_SENS_A (J3) and talking to what is on it
-const uint8_t PHASE_RAIL_B = 3;  // switching on VCC_SENS_B (J4) and talking to what is on it
-const uint8_t PHASE_GAS_READ = 4;  // EXPERIMENTAL: reading the warmed-up ENS160 in the reply slot
+const uint8_t PHASE_IDLE = 0;    // nothing special
+const uint8_t PHASE_TX = 1;      // radio is transmitting
+const uint8_t PHASE_RAIL_A = 2;  // J3 is being turned on / used
+const uint8_t PHASE_RAIL_B = 3;  // J4 is being turned on / used
+const uint8_t PHASE_GAS_READ = 4;  // reading the ENS160 in the reply slot (experimental)
 BootTrace bootTrace __attribute__((section(".noinit")));
-uint8_t bootPrevPhase = PHASE_IDLE;  // the phase the last reset hit, before this boot overwrites it
-bool bootPrevValid = false;
+uint8_t bootPrevPhase = PHASE_IDLE;  // phase at the last reset
+bool bootPrevValid = false;          // true if bootTrace had valid data at boot
 
-// Per-sensor fallback (2026-10-28): switching both rails on browned the node out even with the
-// storage at 3.7 V, and the back-off below then turned ALL sensors off although the SHT41 on J3
-// had worked alone. Now a brown-out is pinned on what was happening: switching J3 on, switching
-// J4 on, or the ENS160 heating (29 mA, also during transmissions). Only that stays off, and only
-// after CULPRIT_AFTER such brown-outs in a row: switching J4 on is marginal, a sensor-only bench
-// test browned out twice and got through on the third try. A start that gets through clears the
-// count; a power-on, a flash, or the hourly retry clears everything.
-const uint8_t CULPRIT_RAIL_A = 0x01;
-const uint8_t CULPRIT_RAIL_B = 0x02;
-const uint8_t CULPRIT_GAS = 0x04;
+// which part gets blamed for a brown-out. after CULPRIT_AFTER in a row that part stays off
+const uint8_t CULPRIT_RAIL_A = 0x01;  // J3
+const uint8_t CULPRIT_RAIL_B = 0x02;  // J4
+const uint8_t CULPRIT_GAS = 0x04;     // ENS160 heater
 const uint8_t CULPRIT_AFTER = 3;
 const char* const CULPRIT_NAMES[3] = { "J3 (switching it on)", "J4 (switching it on)", "ENS160 gas sensing (its heater)" };
 
-uint8_t resetFlags = 0;  // RSTCTRL.RSTFR at boot: 0x01 power-on, 0x02 brown-out, 0x08 watchdog
+uint8_t resetFlags = 0;  // reset reason: 0x01 power-on, 0x02 brown-out, 0x08 watchdog
 
-// Brown-out back-off. A storage that cannot carry the sensors put the node in a reset loop
-// (2026-10-28): every boot switched the sensor rail on, browned out and started again at
-// once, so the harvester never got to refill the storage. Now each brown-out reset in a row
-// first sleeps (power-down, a few uA) for BROWNOUT_WAIT_S, doubling up to BROWNOUT_WAIT_MAX_S.
-// The sensors are off between tasks anyway, so an unexplained brown-out (the radio, a low
-// storage) only lengthens the wait; one pinned on a sensor's header or heater leaves that part
-// off (CULPRIT_AFTER), retried after SENSOR_RETRY_MS by a software reset. GOOD_UPLINKS clean
-// uplinks end the run.
-const uint16_t BROWNOUT_WAIT_S = 30;
-const uint16_t BROWNOUT_WAIT_MAX_S = 480;
-const uint32_t SENSOR_RETRY_MS = 3600000UL;
-const uint8_t GOOD_UPLINKS = 3;
+// after a brown-out the node sleeps before doing anything so the storage can charge.
+// the wait doubles every time until the max
+const uint16_t BROWNOUT_WAIT_S = 30;            // 1st wait
+const uint16_t BROWNOUT_WAIT_MAX_S = 480;       // longest wait
+const uint32_t SENSOR_RETRY_MS = 3600000UL;     // retry the turned off parts after 1 h
+const uint8_t GOOD_UPLINKS = 3;                 // this many ok uplinks = brown-out count cleared
 uint8_t goodUplinks = 0;
 
-// Storage voltage divider (rev-2 bodge, no PCB footprint): R1 from the + pin of the storage
-// terminal U11 to H5 pin 1, R2 from H5 pin 1 to J4 pin 3 (GND). A ceramic cap across R2 is
-// optional; electrolytics leak too much for a 500 kohm source. The LiC charges to 3.60 V under
-// STO_CFG LLLH, above the 3.3 V rail, so it cannot go to the pin directly. Enter the measured
-// resistances, then set VSTO_CAL once per board to (multimeter volts on the storage terminal
-// screws) / (volts this sketch prints), measured at the same moment.
-const uint32_t VSTO_R_TOP = 1000000;     // R1, ohms
-const uint32_t VSTO_R_BOTTOM = 1000000;  // R2, ohms
+// storage voltage divider: R1 from storage + to H5 pin 1, R2 from H5 pin 1 to gnd.
+// VSTO_CAL = multimeter voltage / printed voltage, set once per board
+const uint32_t VSTO_R_TOP = 1000000;     // R1 in ohms
+const uint32_t VSTO_R_BOTTOM = 1000000;  // R2 in ohms
 const float VSTO_CAL = 1.000;
-// R1 >= R2 keeps a full 3.8 V cell at or under 1.9 V on the pin, inside the 2.5 V reference
 static_assert(VSTO_R_TOP >= VSTO_R_BOTTOM, "VSTO_R_TOP must be at least VSTO_R_BOTTOM");
 
-// ---- Energy reported to the task-assignment algorithms ----
-// The storage holds E = C V^2 / 2, but only what is above VSTO_EMPTY_MV is usable, so the node
-// reports ENERGY_CAPACITY x (V^2 - Vempty^2) / (Vfull^2 - Vempty^2): 0 at VSTO_EMPTY_MV, full at
-// VSTO_FULL_MV, no capacitance needed. ENERGY_CAPACITY and the task costs are the server's units
-// (ENERGY_CAPACITY / TASK_COST in task-service-tdma/TaskGenerator.py): keep them the same.
-const uint16_t VSTO_FULL_MV = 3600;   // the LiC is full at 3.60 V (STO_CFG LLLH)
-const uint16_t VSTO_EMPTY_MV = 2800;  // AEM10330 STO_CFG LLLH: the LOAD output (the board) is cut below 2.80 V, back on above 3.10 V
+// ---- energy sent to the server ----
+// energy = ENERGY_CAPACITY x (V^2 - Vempty^2) / (Vfull^2 - Vempty^2), bc E = C V^2 / 2
+// capacity and costs have to match TaskGenerator.py on the server
+const uint16_t VSTO_FULL_MV = 3600;   // storage full
+const uint16_t VSTO_EMPTY_MV = 2800;  // PMIC cuts the board off below this
 const uint16_t ENERGY_CAPACITY = 200;
 const uint16_t COST_HUMIDITY = 10;
 const uint16_t COST_TEMPERATURE = 10;
 const uint16_t COST_GAS = 30;
 static_assert(VSTO_EMPTY_MV < VSTO_FULL_MV, "VSTO_EMPTY_MV must be below VSTO_FULL_MV");
 
-const uint8_t DOWNLINK_PORT = 20;       // TDMA port; the ALOHA version uses 10
-const uint8_t CMD_NONE = 0x00;          // sync only
+const uint8_t DOWNLINK_PORT = 20;       // TDMA downlinks come on this port
+const uint8_t CMD_NONE = 0x00;          // no task, sync only
 const uint8_t CMD_HUMIDITY = 0x01;
 const uint8_t CMD_TEMPERATURE = 0x02;
 const uint8_t CMD_GAS = 0x03;
-const uint8_t CMD_RESET_ENERGY = 0x10;  // simulated-battery refill for the Heltecs, ignored here
-const uint8_t TDMA_DOWNLINK_LEN = 6;       // frames up to 65 s
-const uint8_t TDMA_DOWNLINK_LONG_LEN = 8;  // longer frames: 16-bit frame, 24-bit correction
-const uint8_t SIGNED_CORRECTION_FLAG = 0x80;  // in byte 1: the correction is signed
-// A gas task powers the ENS160 this long before its reply slot (or at once when the frame is
-// shorter), so the heater runs about the same 60 s whatever the frame length.
-const uint32_t GAS_WARMUP_MS = 60000;
-bool gasStartPending = false;              // a gas task is waiting for its warm-up to begin
+const uint8_t CMD_RESET_ENERGY = 0x10;  // for the Heltec nodes, ignored here
+const uint8_t TDMA_DOWNLINK_LEN = 6;       // short downlink
+const uint8_t TDMA_DOWNLINK_LONG_LEN = 8;  // long downlink (frames > 65 s)
+const uint8_t SIGNED_CORRECTION_FLAG = 0x80;  // bit 7 of byte 1: correction is signed
+const uint32_t GAS_WARMUP_MS = 60000;      // ENS160 heats this long before the gas reply
+bool gasStartPending = false;              // gas task waiting for its warm-up to start
 
-// Uplink packet types (first payload byte, uplinks on fPort 1):
-//   PKT_STATUS (0x00) - routine periodic full reading. NOT a reply to a command,
-//                       so the server does not treat it as "task done".
-//   0x01 / 0x02 / 0x03 - response to a humidity / temperature / gas command.
-//                       Only these mark the sensor as free again on the server.
-// Status packets switch no sensor on (sensors are powered for tasks only): their temperature and
-// humidity are NOT_MEASURED, TVOC / eCO2 0 and the ENS160 status ENS_NOT_MEASURED.
-// Status packet, 15 bytes, 16-bit values big-endian:
-//   [0] 0x00, [1-2] TVOC ppb, [3-4] eCO2 ppm, [5-6] temperature x100 (C),
-//   [7-8] humidity x100 (%RH), [9-10] storage voltage in mV (0 = not measured),
-//   [11] AQI-UBA 1..5 (0 = none), [12] ENS160 status (see ENS_ABSENT),
-//   [13] TX power cap in dBm, [14] reset flags of this boot (RSTCTRL.RSTFR).
-// Bytes 0-10 are unchanged, so a decoder that stops at byte 10 keeps working.
-// Gas reply, 7 bytes: [0] 0x03, [1-2] TVOC, [3-4] eCO2, [5] AQI-UBA, [6] ENS160 status.
-// TDMA: every packet above gets the energy (uint16, see energyUnits) as its LAST two bytes:
-// status 17 bytes, humidity / temperature reply 5, gas reply 9. Same rule as the Heltec TDMA
-// node (status 5, replies 5 / 7), so the server reads the energy from the end of any uplink.
+// uplink pkts (fPort 1), 16 bit values are big-endian:
+//   status, 15 bytes: [0] 0x00, [1-2] TVOC ppb, [3-4] eCO2 ppm, [5-6] temp x100, [7-8] hum x100,
+//     [9-10] storage mV, [11] AQI, [12] ENS160 status, [13] tx power cap dBm, [14] reset flags
+//   hum / temp reply, 3 bytes: [0] 0x01 / 0x02, [1-2] value x100
+//   gas reply, 7 bytes: [0] 0x03, [1-2] TVOC, [3-4] eCO2, [5] AQI, [6] ENS160 status
+//   + 2 bytes of energy at the end of every pkt
 const uint8_t PKT_STATUS = 0x00;
 
-// Sent in place of temperature / humidity when the SHT41 does not answer (decodes as 327.67).
-const int16_t NO_READING = 0x7FFF;
-// Sent in place of temperature / humidity when they were not measured: status packets (decodes as 327.66).
-const int16_t NOT_MEASURED = 0x7FFE;
+const int16_t NO_READING = 0x7FFF;    // sent when the SHT41 didnt answer
+const int16_t NOT_MEASURED = 0x7FFE;  // sent when temp / hum wasnt measured (status pkt)
 
-// ENS160 status byte in the packets: 0..3 is the sensor's own validity flag (0 normal,
-// 1 warm-up, 2 initial start-up, 3 invalid output); the rest are the node's codes.
-const uint8_t ENS_NOT_MEASURED = 0xFC;  // no gas reading asked for: status packets
-const uint8_t ENS_NO_SAMPLE = 0xFD;  // sensing, but no fresh sample yet (first second after start)
-const uint8_t ENS_NO_ANSWER = 0xFE;  // found before, no I2C answer now
-const uint8_t ENS_ABSENT = 0xFF;     // not fitted, not found, or not started yet
+// ENS160 status byte in the pkts: 0..3 is from the sensor, the rest are ours
+const uint8_t ENS_NOT_MEASURED = 0xFC;  // no gas reading asked (status pkt)
+const uint8_t ENS_NO_SAMPLE = 0xFD;     // sensor on but no new sample
+const uint8_t ENS_NO_ANSWER = 0xFE;     // was found before but no i2c answer now
+const uint8_t ENS_ABSENT = 0xFF;        // not connected / not found
 
+// 1 set of sensor values
 struct Reading
 {
   int16_t tempScaled;  // C x100
   int16_t humScaled;   // %RH x100
   uint16_t tvoc;       // ppb
   uint16_t eco2;       // ppm
-  uint8_t aqi;         // AQI-UBA 1..5, 0 = none
+  uint8_t aqi;         // 1..5, 0 = none
   uint8_t ensStatus;
 };
-void readTask(uint8_t cmd, Reading &r);  // declared here so the IDE's generated prototype does not land above the struct
+void readTask(uint8_t cmd, Reading &r);  // prototype here so the IDE doesnt put its own above the struct
 
-uint8_t pendingCommand = 0;
-bool sleepPending = false;  // an uplink cycle has finished and nothing else is queued
+uint8_t pendingCommand = 0;  // task to answer in the next slot, 0 = none
+bool sleepPending = false;   // uplink is done, ok to sleep until the next slot
 
-// LMIC has a frame queued or on air: its own uplink carrying MAC answers (OP_POLL, queued after a
-// downlink with MAC commands), a join, or our data. LMIC only sends a queued frame while loop() is
-// awake, so sleeping or starting a new send in this state deadlocks: LMIC_setTxData2 keeps failing
-// with LMIC_ERROR_TX_BUSY and the board sleeps again before LMIC can transmit (seen 2026-10-20).
-// The one exception is loop()'s bounded nap (NAP_MS), which ends at least 1 s before LMIC's next
-// timed job and never falls inside a TX/RX cycle; never a slot sleep or a send.
+// true if lmic still has smth to send (our data, a join, or its own MAC reply).
+// dont sleep or send while this is true or lmic gets stuck
 static bool lmicTxBusy()
 {
   return (LMIC.opmode & (OP_TXRXPEND | OP_TXDATA | OP_POLL | OP_JOINING)) != 0;
 }
 
-// Downlink loss tracking (same idea as the Heltec sketch): the network numbers
-// every downlink, so a jump in the downlink counter means frames were missed.
+// downlink counters, a jump in the frame counter = we missed some
 int32_t lastDownlinkFCnt = -1;
 uint32_t downlinksReceived = 0;
 uint32_t downlinksMissed = 0;
 
-// MegaCoreX's millis() counter (wiring.c). LMIC keeps time with micros(), which is built on it
-// and stops in power-down, so sleepUntil() adds the slept time back.
+// the core's millis counter. it stops in power-down so sleepUntil() adds the slept time back
 extern "C" volatile uint32_t timer_millis;
 
-// RTC PIT ticks, PIT_TICKS_PER_S a second: one interrupt per tick, which wakes the CPU from
-// power-down or idle. 16 bits, see the static_assert under PIT_TICKS_PER_S.
-volatile uint16_t pitTicks = 0;
+volatile uint16_t pitTicks = 0;  // counts PIT ticks, changed in the ISR
 
-// ---- EXPERIMENTAL (2026-11-09): I2C timeout. NOT TESTED ON HARDWARE YET - may need changing.
-// MegaCoreX's Wire has no timeout: a sensor that holds the bus (a loose wire, a dead SHT41 on node
-// 4, 2026-11-09) leaves it waiting forever in TWI_MasterWriteRead(), until the 8 s watchdog resets
-// the node, and the next task does it again. Around every sensor access (i2cGuardStart/Stop) the
-// PIT ISR below counts ticks; after I2C_GUARD_TICKS it ends the stuck transfer with the library's
-// own TWI_MasterTransactionFinished(), so the read fails normally ("no reading") and the header
-// is switched off as usual. 3 s covers the longest normal access: the gas read polls for up to
-// 1.5 s. If this misbehaves, set I2C_TIMEOUT_GUARD 0: the watchdog still catches a hang.
-extern "C" void TWI_MasterTransactionFinished(uint8_t result);  // MegaCoreX Wire, utility/twi.c
+// ---- i2c timeout (EXPERIMENTAL, not tested on hardware yet) ----
+// Wire has no timeout, so a stuck sensor hangs the node until the watchdog resets it.
+// between i2cGuardStart() and i2cGuardStop() the PIT ISR counts ticks, and after 3 s it ends
+// the stuck transfer so the read just fails normally
+extern "C" void TWI_MasterTransactionFinished(uint8_t result);  // from MegaCoreX Wire (twi.c)
 const uint8_t TWI_RESULT_FAIL = 0x06;                             // TWIM_RESULT_FAIL in twi.h
-const uint8_t I2C_GUARD_TICKS = 3 * 16;                           // 3 s of 16 Hz PIT ticks
-volatile bool i2cGuard = false;
-volatile bool i2cGuardFired = false;
-volatile uint8_t i2cGuardTicks = 0;
+const uint8_t I2C_GUARD_TICKS = 3 * 16;                           // 3 s in PIT ticks
+volatile bool i2cGuard = false;       // true while a sensor access is being timed
+volatile bool i2cGuardFired = false;  // true if the timeout happened
+volatile uint8_t i2cGuardTicks = 0;   // ticks since i2cGuardStart()
 
+// PIT interrupt, wakes the mcu and counts 1 tick
 ISR(RTC_PIT_vect)
 {
-  RTC.PITINTFLAGS = RTC_PI_bm;
+  RTC.PITINTFLAGS = RTC_PI_bm;  // clear the flag
   pitTicks++;
 #if I2C_TIMEOUT_GUARD
   if (i2cGuard && ++i2cGuardTicks >= I2C_GUARD_TICKS)
   {
-    TWI_MasterTransactionFinished(TWI_RESULT_FAIL);  // every tick from here on, until Stop
-    i2cGuardTicks = I2C_GUARD_TICKS;
+    TWI_MasterTransactionFinished(TWI_RESULT_FAIL);  // took too long, end the i2c transfer
+    i2cGuardTicks = I2C_GUARD_TICKS;                 // stay at the limit (no overflow)
     i2cGuardFired = true;
   }
 #endif
 }
 
+// start timing a sensor access
 void i2cGuardStart()
 {
   noInterrupts();
@@ -437,6 +323,7 @@ void i2cGuardStart()
   interrupts();
 }
 
+// stop timing, print if it timed out
 void i2cGuardStop()
 {
   i2cGuard = false;
@@ -444,11 +331,13 @@ void i2cGuardStop()
     DBGLN("I2C timed out: sensor access aborted (EXPERIMENTAL guard)");
 }
 
+// reset the watchdog timer
 void watchdogKick()
 {
   __asm__ __volatile__("wdr");
 }
 
+// read pitTicks w/ interrupts off (its 16 bit on an 8 bit mcu)
 uint16_t readPitTicks()
 {
   noInterrupts();
@@ -457,35 +346,28 @@ uint16_t readPitTicks()
   return ticks;
 }
 
-// Measures one RTC PIT tick (64 ULP cycles, nominally 62500 us) against the main clock, which
-// keeps millis() and LMIC's timing (+-2 %), averaged over about 4 s of ticks. Takes about 4 s;
-// called once in setup().
+// measure how long 1 PIT tick really is, using micros(). takes abt 4 s
 uint32_t measurePitTick()
 {
-  const uint16_t TICKS = 4 * PIT_TICKS_PER_S;  // 64 ticks, about 4 s
-  // Idle between the checks, not a busy spin: the PIT and the 1 ms millis tick both wake the CPU,
-  // so each edge is seen within 1 ms (0.025 % of the 4 s).
+  const uint16_t TICKS = 4 * PIT_TICKS_PER_S;  // measure over 64 ticks
   uint16_t t = readPitTicks();
-  while (readPitTicks() == t) { LowPower.idle(); watchdogKick(); }  // start on a tick edge
-  uint32_t start = micros();
+  while (readPitTicks() == t) { LowPower.idle(); watchdogKick(); }  // wait for a tick edge
+  uint32_t start = micros();  // start time
   t = readPitTicks();
-  while ((uint16_t)(readPitTicks() - t) < TICKS) { LowPower.idle(); watchdogKick(); }
-  return (micros() - start) / TICKS;
+  while ((uint16_t)(readPitTicks() - t) < TICKS) { LowPower.idle(); watchdogKick(); }  // wait 64 ticks
+  return (micros() - start) / TICKS;  // avg us per tick
 }
 
-// Sleeps until millis() reaches `target`: power-down in whole PIT ticks (the RTC PIT, from the
-// 1.024 kHz ULP oscillator, is the only timer left running there), then idle for the last one to
-// two ticks (62.5-125 ms), where the 1 ms tick runs again, so the slot is hit to the millisecond.
-// millis() stops in power-down, so the slept ticks are added back at the measured tick length;
-// LMIC keeps time with micros(), which is built on it.
+// sleep until millis() == target. power-down for most of it, then idle for the last bit
+// so we wake up at the exact ms
 void sleepUntil(uint32_t target)
 {
 #if DEBUG
-  Serial.flush();
+  Serial.flush();  // finish printing before sleeping
 #endif
-  static uint32_t usCarry = 0;  // sub-millisecond part of the slept time, carried to the next sleep
+  static uint32_t usCarry = 0;  // leftover us (< 1 ms) from the last sleep
 
-  // wait for a tick edge (idle, under one tick) so every powered-down tick is a whole one
+  // wait for a tick edge so we count whole ticks
   uint16_t t = readPitTicks();
   while (readPitTicks() == t && (int32_t)(target - millis()) > 0)
   {
@@ -493,34 +375,27 @@ void sleepUntil(uint32_t target)
     watchdogKick();
   }
 
-  // 32 bits are enough: left is at most about 1200000 ms (see PIT_TICKS_PER_S), so left * 1000 is
-  // at most 1.2e9 us, and ticks * usPerTick + usCarry below stays under that (ticks is
-  // left * 1000 / usPerTick, less one; usCarry is under 1000).
-  int32_t left = (int32_t)(target - millis());
-  uint32_t ticks = left > 0 ? (uint32_t)left * 1000UL / usPerTick : 0;
+  int32_t left = (int32_t)(target - millis());  // ms left to sleep
+  uint32_t ticks = left > 0 ? (uint32_t)left * 1000UL / usPerTick : 0;  // same thing in ticks
   if (ticks > 0)
   {
-    ticks--;  // keep up to one tick for the idle part: never wake past the target
+    ticks--;  // 1 tick less so we dont wake up late
     noInterrupts();
-    pitTicks = 0;
+    pitTicks = 0;  // start counting from 0
     interrupts();
     while (readPitTicks() < ticks)
     {
-      LowPower.powerDown();
-      watchdogKick();  // the watchdog keeps counting in power-down
+      LowPower.powerDown();  // sleep, the PIT wakes us every tick
+      watchdogKick();        // watchdog still runs in power-down
     }
-    // The millis TCB runs on CLK_PER, so it also counts the 10-15 us or so awake after each PIT
-    // wake (ISR, loop check, re-sleep), and the full tick is credited on top: millis() runs about
-    // 0.02 % fast here (10-14 ms early per 60 s frame, about 0.4 s in an 1866 s sleep; an estimate,
-    // not measured). The server's per-frame slot correction absorbs it, and it is far below the
-    // ULP's own drift.
-    uint32_t us = ticks * usPerTick + usCarry;
-    usCarry = us % 1000UL;
+    uint32_t us = ticks * usPerTick + usCarry;  // time we slept in us
+    usCarry = us % 1000UL;                      // keep the part under 1 ms for next time
     noInterrupts();
-    timer_millis += us / 1000UL;
+    timer_millis += us / 1000UL;  // add the slept time to millis()
     interrupts();
   }
 
+  // idle for whats left (millis runs in idle)
   while ((int32_t)(target - millis()) > 0)
   {
     LowPower.idle();
@@ -528,21 +403,22 @@ void sleepUntil(uint32_t target)
   }
 }
 
-// The storage voltage as energy units for the algorithms (see ENERGY_CAPACITY).
+// storage voltage (mV) -> energy units
 uint16_t energyUnits(uint16_t mv)
 {
   if (mv == 0)
-    return ENERGY_CAPACITY;  // VSTO_SENSE off: nothing measured, counted as full
+    return ENERGY_CAPACITY;  // no measurement (VSTO_SENSE off), say full
   if (mv <= VSTO_EMPTY_MV)
-    return 0;
+    return 0;  // empty
   if (mv >= VSTO_FULL_MV)
-    return ENERGY_CAPACITY;
-  float empty2 = (float)VSTO_EMPTY_MV * VSTO_EMPTY_MV;
-  float usable = (float)mv * mv - empty2;
-  float full = (float)VSTO_FULL_MV * VSTO_FULL_MV - empty2;
-  return (uint16_t)(ENERGY_CAPACITY * usable / full + 0.5);
+    return ENERGY_CAPACITY;  // full
+  float empty2 = (float)VSTO_EMPTY_MV * VSTO_EMPTY_MV;       // Vempty^2
+  float usable = (float)mv * mv - empty2;                    // V^2 - Vempty^2
+  float full = (float)VSTO_FULL_MV * VSTO_FULL_MV - empty2;  // Vfull^2 - Vempty^2
+  return (uint16_t)(ENERGY_CAPACITY * usable / full + 0.5);  // scale + round
 }
 
+// energy cost of a task
 uint16_t taskCost(uint8_t cmd)
 {
   if (cmd == CMD_HUMIDITY)
@@ -554,32 +430,32 @@ uint16_t taskCost(uint8_t cmd)
   return 0;
 }
 
-// A TDMA downlink answers the uplink that went on air at `uplinkAt`: the next slot is one frame
-// after it, plus the correction that pulls this node onto the server's slot grid. A signed
-// correction (SIGNED_CORRECTION_FLAG) can be negative: a node that came in late waits a little
-// less than a frame instead of nearly two.
+// read the schedule from a downlink. next slot = uplink time + 1 frame + correction.
+// the correction can be negative (signed flag) for a node that came in late
 void applySchedule(const uint8_t* d, uint8_t len, uint32_t uplinkAt)
 {
-  slotIndex = d[1] & 0x7F;
-  bool isSigned = d[1] & SIGNED_CORRECTION_FLAG;
+  slotIndex = d[1] & 0x7F;                        // low 7 bits = slot idx
+  bool isSigned = d[1] & SIGNED_CORRECTION_FLAG;  // bit 7 = correction is signed
   numSlots = d[2];
   uint32_t frame;
   int32_t correction;
   if (len >= TDMA_DOWNLINK_LONG_LEN)
   {
+    // long format: 16 bit frame (s), 24 bit correction (ms)
     frame = (((uint32_t)d[3] << 8) | d[4]) * 1000UL;
     uint32_t raw = ((uint32_t)d[5] << 16) | ((uint32_t)d[6] << 8) | d[7];
-    correction = (isSigned && (raw & 0x800000UL)) ? (int32_t)raw - 0x1000000L : (int32_t)raw;
+    correction = (isSigned && (raw & 0x800000UL)) ? (int32_t)raw - 0x1000000L : (int32_t)raw;  // 24 bit two's complement
   }
   else
   {
+    // short format: 8 bit frame (s), 16 bit correction (ms)
     frame = (uint32_t)d[3] * 1000UL;
     uint16_t raw = ((uint16_t)d[4] << 8) | d[5];
     correction = isSigned ? (int32_t)(int16_t)raw : (int32_t)raw;
   }
   if (frame >= MIN_FRAME_MS && frame <= MAX_FRAME_MS)
-    frameMs = frame;
-  // at most a frame later or half a frame earlier: anything else is a corrupt downlink
+    frameMs = frame;  // only use it if its in range
+  // ok range: up to 1 frame later or half a frame earlier, anything else = bad data
   if (correction > (int32_t)frameMs || correction < -(int32_t)(frameMs / 2))
     correction = 0;
   nextSlotAt = uplinkAt + frameMs + (uint32_t)correction;
@@ -597,52 +473,47 @@ void applySchedule(const uint8_t* d, uint8_t len, uint32_t uplinkAt)
   DBGLN(" ms");
 }
 
+// save settings to EEPROM (put only writes the bytes that changed)
 void saveSettings()
 {
-  EEPROM.put(SETTINGS_ADDR, settings);  // only bytes that changed are written
+  EEPROM.put(SETTINGS_ADDR, settings);
 }
 
-// Call after LMIC_reset(), which seeds LMIC.devNonce from the radio's noise: a blank EEPROM
-// takes that as the first DevNonce.
+// load settings from EEPROM, or make new ones if its empty / old. call after LMIC_reset()
 void loadSettings()
 {
   EEPROM.get(SETTINGS_ADDR, settings);
   bool valid = settings.magic == SETTINGS_MAGIC && settings.txPowerMax == TX_POWER_DBM &&
                settings.txPowerCap >= TX_POWER_MIN_DBM && settings.txPowerCap <= TX_POWER_DBM;
   if (valid)
-    return;
+    return;  // alrd good
 
   settings.magic = SETTINGS_MAGIC;
   settings.txPowerMax = TX_POWER_DBM;
   settings.txPowerCap = TX_POWER_DBM;
   settings.brownOuts = 0;
-  settings.devNonce = LMIC.devNonce;
+  settings.devNonce = LMIC.devNonce;  // lmic's random nonce as the 1st one
   saveSettings();
   DBGLN("Settings initialised in EEPROM");
 }
 
-// A brown-out reset while the radio was transmitting means the rail could not carry that
-// frame, so the next ones go out with less power. Nothing raises the cap again except a new
-// TX_POWER_DBM, so a marginal rail settles at the power it can carry instead of resetting on
-// every JoinRequest. Brown-outs at other moments (sensor rail switch-on, ENS160 inrush) are
-// reported in the status packet's reset flags but do not touch the cap.
+// if the last reset was a brown-out during tx, lower the tx power limit and save it
 void learnFromBrownOut()
 {
-  // the phase as the reset left it: by now the sensor start-up has overwritten bootTrace.phase
-  bool duringTx = bootPrevValid && bootPrevPhase == PHASE_TX;
+  bool duringTx = bootPrevValid && bootPrevPhase == PHASE_TX;  // was the radio transmitting?
   bootTrace.magic = TRACE_MAGIC;
   bootTrace.phase = PHASE_IDLE;
 
-  // a power-on also raises the brown-out flag while VDD climbs through the BOD level
+  // only for a real brown-out (power-on also sets the brown-out flag) that happened during tx
   if (!(resetFlags & RSTCTRL_BORF_bm) || (resetFlags & RSTCTRL_PORF_bm) || !duringTx)
     return;
 
   if (settings.brownOuts < 255)
     settings.brownOuts++;
   if (settings.txPowerCap - TX_POWER_STEP_DB >= TX_POWER_MIN_DBM)
-    settings.txPowerCap -= TX_POWER_STEP_DB;
+    settings.txPowerCap -= TX_POWER_STEP_DB;  // 1 step lower
   else
-    settings.txPowerCap = TX_POWER_MIN_DBM;
+    settings.txPowerCap = TX_POWER_MIN_DBM;  // alrd at the min
   saveSettings();
 
   DBG("Brown-out during a transmission (");
@@ -652,82 +523,65 @@ void learnFromBrownOut()
   DBGLN(" dBm");
 }
 
-// The SX1276 comes out of a power-on in standby (about 1.6 mA; SX1276 datasheet, from memory), and
-// after an MCU brown-out it stays as it was left (standby once a cut-short TX or RX ends) until
-// os_init() resets it and puts it to sleep, which is after the brown-out rest (up to 8 min) and the
-// 4 s calibration. This puts it to sleep at the top of setup() instead. A frame still on air after
-// an MCU brown-out is cut off; that frame is lost anyway, LMIC's state is gone. RST and the DIO
-// pins are not touched: os_init() still resets the radio exactly as before.
-// Register access as LMIC's radio_sx127x.c does it (writeReg/readReg): NSS low, the address with
-// bit 7 clear to read or set to write, one data byte, NSS high. RegOpMode (address 0x01) bits 2:0
-// are the mode, 000 = sleep in both LoRa and FSK mode (LMIC's OPMODE_MASK / OPMODE_SLEEP); after a
-// reset the mode is standby. Bit 7 (LoRa or FSK) may only change in sleep (datasheet, from
-// memory), so every bit but the mode, bit 3 (low-frequency mode) included, is written back as read.
+// put the radio to sleep right at boot (it starts in standby, abt 1.6 mA) w/o waiting for lmic.
+// just reads RegOpMode and writes it back w/ the mode bits = 000 (sleep)
 void radioSleepEarly()
 {
-  const uint8_t SX1276_REG_OPMODE = 0x01;
-  const uint8_t SX1276_OPMODE_MODE_gm = 0x07;  // 000 = sleep
+  const uint8_t SX1276_REG_OPMODE = 0x01;      // RegOpMode address
+  const uint8_t SX1276_OPMODE_MODE_gm = 0x07;  // mode bits, 000 = sleep
 
-  // NSS high before it becomes an output: digitalWrite() on an input only sets its pull-up
+  // NSS high first, then make it an output
   PORT_t* nssPort = digitalPinToPortStruct(lmic_pins.nss);
   uint8_t nssMask = digitalPinToBitMask(lmic_pins.nss);
   nssPort->OUTSET = nssMask;
   nssPort->DIRSET = nssMask;
-  PORTA.PIN5CTRL |= PORT_PULLUPEN_bm;  // MISO floats while the radio is deselected (as in setup())
-  SPI.begin();  // PA4-PA6; LMIC's hal_init() calls it again later, which is harmless
-  // SX1276 ready for SPI 10 ms after the end of its power-on reset (datasheet, from memory); after
-  // a power-on, the MCU's 32 ms start-up time (fuse SYSCFG1 = 0x06, as MegaCoreX writes it with
-  // the programmer) comes first and adds margin. If the radio were not ready, it would ignore the
-  // write and stay as it was, which is the old behaviour; os_init() resets it either way.
-  delay(10);
+  PORTA.PIN5CTRL |= PORT_PULLUPEN_bm;  // pull-up on MISO so it doesnt float
+  SPI.begin();
+  delay(10);  // radio needs 10 ms after power-on before spi works
 
   SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   digitalWrite(lmic_pins.nss, LOW);
-  SPI.transfer(SX1276_REG_OPMODE & 0x7F);  // read
-  uint8_t opMode = SPI.transfer(0x00);
+  SPI.transfer(SX1276_REG_OPMODE & 0x7F);  // bit 7 = 0 -> read
+  uint8_t opMode = SPI.transfer(0x00);     // current value
   digitalWrite(lmic_pins.nss, HIGH);
   digitalWrite(lmic_pins.nss, LOW);
-  SPI.transfer(SX1276_REG_OPMODE | 0x80);  // write
-  SPI.transfer((uint8_t)(opMode & ~SX1276_OPMODE_MODE_gm));
+  SPI.transfer(SX1276_REG_OPMODE | 0x80);  // bit 7 = 1 -> write
+  SPI.transfer((uint8_t)(opMode & ~SX1276_OPMODE_MODE_gm));  // same value but mode = sleep
   digitalWrite(lmic_pins.nss, HIGH);
   SPI.endTransaction();
 }
 
-// Counts brown-out resets in a row and, after one, sleeps before anything draws current so the
-// storage can recharge (see BROWNOUT_WAIT_S). Runs before learnFromBrownOut(), which rewrites
-// the magic. Needs the RTC PIT running; millis() is not credited, LMIC has not started yet.
+// runs at boot: counts brown-outs in a row, blames a part if it can, then sleeps so the
+// storage can charge. has to run before learnFromBrownOut()
 void brownOutBackOff()
 {
-  bool brownOut = (resetFlags & RSTCTRL_BORF_bm) && !(resetFlags & RSTCTRL_PORF_bm);
-  bootPrevValid = bootTrace.magic == TRACE_MAGIC;
-  bootPrevPhase = bootTrace.phase;
+  bool brownOut = (resetFlags & RSTCTRL_BORF_bm) && !(resetFlags & RSTCTRL_PORF_bm);  // real brown-out?
+  bootPrevValid = bootTrace.magic == TRACE_MAGIC;  // is the trace valid?
+  bootPrevPhase = bootTrace.phase;                 // what we were doing at the reset
 
-  // a power-on or a flash starts over: every sensor gets tried again
+  // power-on or new flash -> forget everything, try all sensors again
   if (!bootPrevValid || (resetFlags & (RSTCTRL_PORF_bm | RSTCTRL_UPDIRF_bm)))
   {
     bootTrace.culprits = 0;
     bootTrace.fails[0] = bootTrace.fails[1] = bootTrace.fails[2] = 0;
   }
 
-  // EXPERIMENTAL (2026-11-09, may need changing): a watchdog reset while a sensor was being
-  // talked to (a hung I2C bus) is pinned on that sensor like a brown-out. Only during a sensor
-  // access: a watchdog reset while the gas sensor warms up in sleep, or in LMIC, is not a sensor's.
+  // experimental: a watchdog reset while talking to a sensor (stuck i2c) counts like a brown-out
   bool sensorHang = WATCHDOG_COUNTS_AS_SENSOR_FAULT && (resetFlags & RSTCTRL_WDRF_bm) &&
                     !(resetFlags & RSTCTRL_PORF_bm) &&
                     (bootPrevPhase == PHASE_RAIL_A || bootPrevPhase == PHASE_RAIL_B ||
                      bootPrevPhase == PHASE_GAS_READ);
 
-  // pin the brown-out on what was going on, if anything sensor-related; that part stays off
-  // once it has done it CULPRIT_AFTER times in a row
+  // find which part was on when the reset happened
   uint8_t culprit = 0, idx = 0;
   if (bootPrevValid && (brownOut || sensorHang))
   {
     if (bootPrevPhase == PHASE_RAIL_A)
-      culprit = CULPRIT_RAIL_A, idx = 0;
+      culprit = CULPRIT_RAIL_A, idx = 0;  // J3
     else if (bootPrevPhase == PHASE_RAIL_B)
-      culprit = CULPRIT_RAIL_B, idx = 1;
+      culprit = CULPRIT_RAIL_B, idx = 1;  // J4
     else if (bootTrace.gasOn || bootPrevPhase == PHASE_GAS_READ)
-      culprit = CULPRIT_GAS, idx = 2;
+      culprit = CULPRIT_GAS, idx = 2;     // gas sensor
   }
   if (culprit)
   {
@@ -741,18 +595,16 @@ void brownOutBackOff()
     DBG(CULPRIT_AFTER);
     DBGLN(bootTrace.fails[idx] >= CULPRIT_AFTER ? ": leaving it off" : ": will try again");
     if (bootTrace.fails[idx] >= CULPRIT_AFTER)
-      bootTrace.culprits |= culprit;
+      bootTrace.culprits |= culprit;  // too many times, keep it off
   }
-  bootTrace.gasOn = 0;
+  bootTrace.gasOn = 0;  // heater is off after a reset
 
-  // an unexplained brown-out counts towards the all-sensors-off back-off; an explained one does
-  // not, that sensor is simply left off
+  // count brown-outs in a row that we couldnt blame on a part
   if (!bootPrevValid || !brownOut)
     bootTrace.brownOutRun = 0;
   else if (!culprit && bootTrace.brownOutRun < 255)
     bootTrace.brownOutRun++;
-  // Valid from here on: a boot that browns out before learnFromBrownOut() (at the sensor rail,
-  // say) must still leave a trace the next boot can count (seen 2026-10-28: it never did).
+  // make the trace valid now so the next boot can use it even if we brown out early
   if (!bootPrevValid)
   {
     bootTrace.magic = TRACE_MAGIC;
@@ -760,6 +612,7 @@ void brownOutBackOff()
     bootTrace.gasOn = 0;
   }
 
+  // print what is turned off
   if (bootTrace.culprits)
   {
     DBG("Left off after brown-outs:");
@@ -769,10 +622,10 @@ void brownOutBackOff()
     DBGLN(" - power-cycle to try again");
   }
 
-  uint8_t run = culprit ? 1 : bootTrace.brownOutRun;  // an explained one still rests once
+  uint8_t run = culprit ? 1 : bootTrace.brownOutRun;  // a blamed one still waits once
   if (run == 0)
-    return;
-  uint32_t wait = (uint32_t)BROWNOUT_WAIT_S << (run - 1 < 5 ? run - 1 : 5);
+    return;  // no brown-out, no wait
+  uint32_t wait = (uint32_t)BROWNOUT_WAIT_S << (run - 1 < 5 ? run - 1 : 5);  // 30, 60, 120... s
   if (wait > BROWNOUT_WAIT_MAX_S)
     wait = BROWNOUT_WAIT_MAX_S;
 
@@ -784,124 +637,110 @@ void brownOutBackOff()
 #if DEBUG
   Serial.flush();
 #endif
-  // wait is in seconds; the rest counts PIT ticks at the nominal rate (usPerTick is not measured
-  // yet, and a rest does not need it)
-  uint32_t restTicks = wait * PIT_TICKS_PER_S;
+  uint32_t restTicks = wait * PIT_TICKS_PER_S;  // wait in PIT ticks
   noInterrupts();
   pitTicks = 0;
   interrupts();
   while (readPitTicks() < restTicks)
   {
-    LowPower.powerDown();
+    LowPower.powerDown();  // sleep
     watchdogKick();
   }
 }
 
-// Moves the TWI to header J3 or J4. Wire.swap() only takes effect in Wire.begin().
+// move the i2c to header J3 or J4 (swap only works w/ a new Wire.begin())
 void selectBus(uint8_t bus)
 {
   if (bus == currentBus)
-    return;
+    return;  // alrd there
   Wire.end();
   Wire.swap(bus);
   Wire.begin();
   currentBus = bus;
 }
 
-// ---- Sensor power, per task ----
-// Switch-on ramp. The MIC94069 ramps its output over about 800 us by itself and drains it while
-// off, yet a plain switch-on of the ENS160 board browned the node out every time (36 of 36 bench
-// trials, 2026-10-28, storage 3.2 V), on J4 or J3, in any order or gap. Pulsing the enable with
-// on-times that grow from RAMP_FROM_US to RAMP_TO_US in RAMP_STEP_US, RAMP_OFF_US off in between
-// (about 70 ms in all), charges the board a little at a time: step 5 us and off 20 us each passed
-// 5 of 5 trials with the gas heater running, step 10 / off 50 passed 8 of 10, step 25 none; the
-// two together (used here) passed 8 of 8 at 3.04 V storage, the lowest of the whole test.
-// sensor node tdma/bench/sequence_test/ in the repo has the bench sketch and the full results. Used
-// for both headers.
-const uint16_t RAMP_FROM_US = 50;
-const uint16_t RAMP_TO_US = 800;
-const uint8_t RAMP_STEP_US = 5;
-const uint8_t RAMP_OFF_US = 20;
+// ---- sensor power ----
+// turning a header on in 1 go browns the node out, so the enable pin is pulsed w/ longer and
+// longer on times (50 us up to 800 us) to charge the sensor board slowly. takes abt 70 ms.
+// test results are in bench/sequence_test
+const uint16_t RAMP_FROM_US = 50;   // 1st on time
+const uint16_t RAMP_TO_US = 800;    // last on time
+const uint8_t RAMP_STEP_US = 5;     // on time grows by this each pulse
+const uint8_t RAMP_OFF_US = 20;     // off time between pulses
 
-// The enable goes in as its port's OUT register and bit (digitalWriteFast() needs a constant
-// pin): VPORTD.OUT / PIN6_bm is PIN_RAIL_A (PD6, J3), VPORTC.OUT / PIN1_bm is PIN_RAIL_B (PC1, J4).
+// pulse an enable pin on, out = port register, mask = pin bit
 void railRamp(volatile uint8_t &out, uint8_t mask)
 {
   for (uint16_t on = RAMP_FROM_US; on <= RAMP_TO_US; on += RAMP_STEP_US)
   {
-    out |= mask;
+    out |= mask;   // on
     delayMicroseconds(on);
-    out &= ~mask;
+    out &= ~mask;  // off
     delayMicroseconds(RAMP_OFF_US);
   }
-  out |= mask;
+  out |= mask;  // stay on
 }
 
-// Powers the header a sensor sits on and points the TWI at it; false when that header was left off
-// after brown-outs. bootTrace.phase stays on the header until headerOff(), so a brown-out while
-// talking to its sensor is pinned on it too.
+// turn a header on and put the i2c on it. returns false if that header is kept off
 bool headerOn(uint8_t bus)
 {
   bool j3 = bus == BUS_J3;
   if (bootTrace.culprits & (j3 ? CULPRIT_RAIL_A : CULPRIT_RAIL_B))
-    return false;
-  bootTrace.phase = j3 ? PHASE_RAIL_A : PHASE_RAIL_B;
+    return false;  // this header caused brown-outs, leave it off
+  bootTrace.phase = j3 ? PHASE_RAIL_A : PHASE_RAIL_B;  // remember it in case we brown out
   if (j3)
-    railRamp(VPORTD.OUT, PIN6_bm);
+    railRamp(VPORTD.OUT, PIN6_bm);  // PD6 = J3 enable
   else
-    railRamp(VPORTC.OUT, PIN1_bm);
-  delay(5);  // SHT41 power-up is 1 ms max
-  LowPower.enablePinISC(j3 ? PIN_PA2 : PIN_PC2);
+    railRamp(VPORTC.OUT, PIN1_bm);  // PC1 = J4 enable
+  delay(5);  // let the sensor power up
+  LowPower.enablePinISC(j3 ? PIN_PA2 : PIN_PC2);  // turn the i2c pins back on
   LowPower.enablePinISC(j3 ? PIN_PA3 : PIN_PC3);
-  currentBus = 0xFF;
+  currentBus = 0xFF;  // force a new Wire.begin()
   selectBus(bus);
   return true;
 }
 
-// On rev 2 the bus pull-ups R9-R12 sit on the always-on 3V3, so a sensor whose header is off is
-// back-fed through SDA/SCL (estimated 0.3-0.5 mA, not measured). The header came up and did its
-// work, so its brown-out count starts over.
+// turn a header off and park its i2c pins
 void headerOff(uint8_t bus)
 {
   bool j3 = bus == BUS_J3;
   Wire.end();
   currentBus = 0xFF;
-  LowPower.disablePinISC(j3 ? PIN_PA2 : PIN_PC2);  // also clears the internal pull-ups Wire.begin() set
+  LowPower.disablePinISC(j3 ? PIN_PA2 : PIN_PC2);  // i2c pins off (also removes the pull-ups)
   LowPower.disablePinISC(j3 ? PIN_PA3 : PIN_PC3);
   if (j3)
     digitalWriteFast(PIN_RAIL_A, LOW);
   else
     digitalWriteFast(PIN_RAIL_B, LOW);
   bootTrace.phase = PHASE_IDLE;
-  bootTrace.fails[j3 ? 0 : 1] = 0;
+  bootTrace.fails[j3 ? 0 : 1] = 0;  // it worked, reset its brown-out count
 }
 
-// Looks for the SHT41 (sht) or the ENS160 the first time a task needs it (with USE_DHT11 only the
-// ENS160, and only on J4: J3 holds the DHT11, whose data line must not see I2C traffic), so nothing is powered
-// outside a task: J3, then J4, one header at a time, each switched off again (the task powers the
-// sensor's header itself). A header already on for a warming ENS160 is asked as it is: switching it
-// again would cut the heater. The other sensor is noted too if it answers on the same header.
+// look for a sensor on J3 then J4. sht = true looks for the SHT41, false for the ENS160.
+// w/ USE_DHT11 only J4 is searched, bc the DHT11 data pin on J3 shouldnt get i2c traffic
 void findSensor(bool sht)
 {
   if (sht)
     shtSearched = true;
   else
     ensSearched = true;
+  // try each header until the sensor is found
   for (uint8_t bus = USE_DHT11 ? BUS_J4 : BUS_J3; bus <= BUS_J4 && !(sht ? shtFound : ens160Found);
        bus++)
   {
 #if USE_ENS160
-    bool alreadyOn = gasWarming && bus == ensBus;
+    bool alreadyOn = gasWarming && bus == ensBus;  // header alrd on for a gas task, dont touch its power
 #else
     bool alreadyOn = false;
 #endif
     if (alreadyOn)
       selectBus(bus);
     else if (!headerOn(bus))
-      continue;
+      continue;  // header is kept off, skip it
     watchdogKick();
-    i2cGuardStart();
+    i2cGuardStart();  // time the i2c access
 #if USE_ENS160
+    // is the ENS160 on this header?
     if (!ens160Found && ens160Probe())
     {
       ens160Found = true;
@@ -911,6 +750,7 @@ void findSensor(bool sht)
       DBGLN(bus == BUS_J3 ? " on J3" : " on J4");
     }
 #endif
+    // is the SHT41 on this header?
     if (!shtFound && sht4.begin())
     {
       shtFound = true;
@@ -921,7 +761,7 @@ void findSensor(bool sht)
     }
     i2cGuardStop();
     if (!alreadyOn)
-      headerOff(bus);
+      headerOff(bus);  // done looking, power off again
   }
   if (sht && !shtFound)
     DBGLN("Could not find SHT41 on J3 or J4, check wiring!");
@@ -932,16 +772,13 @@ void findSensor(bool sht)
 }
 
 #if USE_ENS160
-// A gas task is due: power the ENS160 and start its heater, GAS_WARMUP_MS (60 s) before the reply
-// slot, or at once when the frame is shorter (loop() calls this). Its readings only count as valid
-// after about 3 min (status 1, warm-up, until then); the 60 s value is sent with that status, as
-// decided for the gas task.
+// turn the ENS160 on and start its heater for a gas task
 void gasStart()
 {
   if (gasWarming)
-    return;
+    return;  // alrd heating
   if (!ens160Found && !ensSearched && !(bootTrace.culprits & CULPRIT_GAS))
-    findSensor(false);
+    findSensor(false);  // 1st gas task, look for the sensor
   if (!ens160Found)
     return;
   if (bootTrace.culprits & CULPRIT_GAS)
@@ -955,13 +792,13 @@ void gasStart()
     return;
   }
   i2cGuardStart();
-  ens160SetMode(ENS160_OPMODE_RESET);
+  ens160SetMode(ENS160_OPMODE_RESET);  // reset the sensor
   delay(100);
   watchdogKick();
-  bootTrace.phase = PHASE_IDLE;  // the header came up: from here a brown-out is the heater's
+  bootTrace.phase = PHASE_IDLE;  // header is up, a brown-out from here is the heater
   bootTrace.gasOn = 1;
   uint8_t mode = 0xFF;
-  bool ok = ens160SetMode(ENS160_OPMODE_IDLE);
+  bool ok = ens160SetMode(ENS160_OPMODE_IDLE);  // idle 1st, then standard (= gas sensing)
   delay(10);
   ok = ok && ens160SetMode(ENS160_OPMODE_STANDARD) && ens160GetMode(mode) && mode == ENS160_OPMODE_STANDARD;
   if (!ok)
@@ -978,10 +815,11 @@ void gasStart()
   DBGLN("ENS160 on and heating for the gas task, read in the next slot");
 }
 
+// turn the ENS160 off
 void gasStop()
 {
   if (!gasWarming)
-    return;
+    return;  // alrd off
   gasWarming = false;
   bootTrace.gasOn = 0;
   headerOff(ensBus);
@@ -990,29 +828,27 @@ void gasStop()
 
 #if USE_DHT11
 // ---- DHT11 on J3 (node 4) ----
-// A 3-pin DHT11: VCC on VCC_SENS_A, data on SDA_A (PA2), GND. The data line uses the board's bus
-// pull-up (R9-R12, on the always-on 3V3), so no extra resistor is needed. Single-wire protocol: the
-// host pulls the line low for at least 18 ms, the sensor answers 80 us low, 80 us high, then sends
-// 40 bits, each 50 us low followed by 26-28 us high (0) or 70 us high (1): humidity integer and
-// decimal, temperature integer and decimal (bit 7 of it = below 0 C), checksum. Read with
-// interrupts off (about 5 ms) by comparing each bit's high time against its low time, as the
-// Adafruit DHT library does, so it does not depend on the exact clock.
-const uint16_t DHT_POWERUP_MS = 1100;  // datasheet: 1 s after power-up before the first read
-const uint16_t DHT_RETRY_MS = 1100;    // and at least 1 s between two reads
-const uint16_t DHT_TIMEOUT = 1000;     // loop passes before a pulse counts as missing (~1 ms)
-const uint16_t DHT_MISSING = 0xFFFF;   // dhtPulse() result on a timeout
+// 3 pin DHT11: VCC on the J3 rail, data on PA2, GND. uses the board's i2c pull-up on that pin.
+// 1 wire protocol: we pull the line low for 20 ms, the sensor answers 80 us low + 80 us high,
+// then sends 40 bits. each bit = 50 us low then a short high (0) or a long high (1).
+// bytes: hum int, hum decimal, temp int, temp decimal, checksum
+const uint16_t DHT_POWERUP_MS = 1100;  // sensor needs 1 s after power-up
+const uint16_t DHT_RETRY_MS = 1100;    // and 1 s between 2 reads
+const uint16_t DHT_TIMEOUT = 1000;     // loop count before we say the pulse is missing (abt 1 ms)
+const uint16_t DHT_MISSING = 0xFFFF;   // dhtPulse() returns this on a timeout
 
+// wait ms in idle (not delay) and keep the watchdog happy
 void dhtWait(uint16_t ms)
 {
   uint32_t t0 = millis();
   while (millis() - t0 < ms)
   {
-    LowPower.idle();  // idle, not delay(): the 1 ms millis tick wakes the CPU
+    LowPower.idle();
     watchdogKick();
   }
 }
 
-// Loop passes while PA2 stays at `level` (0 if it already is not), or DHT_MISSING on a timeout.
+// count loops while PA2 stays at `level`, DHT_MISSING if it takes too long
 static inline uint16_t dhtPulse(bool level)
 {
   uint16_t n = 0;
@@ -1022,24 +858,23 @@ static inline uint16_t dhtPulse(bool level)
   return n;
 }
 
-// One read: true with a good checksum.
+// 1 read of the DHT11, true if the checksum is ok
 bool dhtReadOnce(int16_t &tempX100, int16_t &humX100)
 {
-  uint8_t d[5] = { 0, 0, 0, 0, 0 };
-  uint16_t lows[40], highs[40];
+  uint8_t d[5] = { 0, 0, 0, 0, 0 };  // the 5 bytes from the sensor
+  uint16_t lows[40], highs[40];      // low and high time of each bit
 
   VPORTA.OUT &= ~PIN2_bm;  // start signal: pull the line low for 20 ms
   VPORTA.DIR |= PIN2_bm;
   dhtWait(20);
 
-  noInterrupts();
-  VPORTA.DIR &= ~PIN2_bm;  // release: the pull-up takes it high, the sensor answers
+  noInterrupts();          // timing matters from here (abt 5 ms)
+  VPORTA.DIR &= ~PIN2_bm;  // let go of the line, pull-up takes it high
   delayMicroseconds(40);
-  // the sensor pulls the line low 20-40 us after the release (wait out what is left of that),
-  // then answers 80 us low and 80 us high
+  // wait for the sensor's answer: line goes low, 80 us low, 80 us high
   bool ok = dhtPulse(true) != DHT_MISSING && dhtPulse(false) != DHT_MISSING &&
             dhtPulse(true) != DHT_MISSING;
-  for (uint8_t i = 0; ok && i < 40; i++)
+  for (uint8_t i = 0; ok && i < 40; i++)  // measure all 40 bits
   {
     lows[i] = dhtPulse(false);
     highs[i] = dhtPulse(true);
@@ -1055,21 +890,20 @@ bool dhtReadOnce(int16_t &tempX100, int16_t &humX100)
   {
     d[i / 8] <<= 1;
     if (highs[i] > lows[i])
-      d[i / 8] |= 1;
+      d[i / 8] |= 1;  // high longer than low = bit is 1
   }
-  if ((uint8_t)(d[0] + d[1] + d[2] + d[3]) != d[4])
+  if ((uint8_t)(d[0] + d[1] + d[2] + d[3]) != d[4])  // checksum = sum of the 1st 4 bytes
   {
     DBGLN("DHT11 checksum wrong");
     return false;
   }
-  humX100 = (int16_t)d[0] * 100 + (d[1] % 10) * 10;
-  int16_t t = (int16_t)d[2] * 100 + (d[3] & 0x0F) * 10;
-  tempX100 = (d[3] & 0x80) ? -t : t;
+  humX100 = (int16_t)d[0] * 100 + (d[1] % 10) * 10;      // hum x100
+  int16_t t = (int16_t)d[2] * 100 + (d[3] & 0x0F) * 10;  // temp x100
+  tempX100 = (d[3] & 0x80) ? -t : t;                     // bit 7 = below 0 C
   return true;
 }
 
-// Powers J3 (same ramp and brown-out tracking as headerOn, without the TWI), waits for the
-// sensor to start, reads it (one retry) and switches J3 off again.
+// turn J3 on, wait for the DHT11 to start, read it (1 retry), turn J3 off
 bool dhtRead(int16_t &tempX100, int16_t &humX100)
 {
   if (bootTrace.culprits & CULPRIT_RAIL_A)
@@ -1077,16 +911,16 @@ bool dhtRead(int16_t &tempX100, int16_t &humX100)
     DBGLN("J3 (DHT11) left off after brown-outs");
     return false;
   }
-  bootTrace.phase = PHASE_RAIL_A;
-  VPORTA.DIR &= ~PIN2_bm;  // data line an input before the sensor gets power
+  bootTrace.phase = PHASE_RAIL_A;  // remember it in case we brown out
+  VPORTA.DIR &= ~PIN2_bm;          // data pin = input before the sensor gets power
   LowPower.enablePinISC(PIN_PA2);
-  railRamp(VPORTD.OUT, PIN6_bm);
+  railRamp(VPORTD.OUT, PIN6_bm);   // J3 power on
   dhtWait(DHT_POWERUP_MS);
   bool ok = dhtReadOnce(tempX100, humX100);
   if (!ok)
   {
     dhtWait(DHT_RETRY_MS);
-    ok = dhtReadOnce(tempX100, humX100);
+    ok = dhtReadOnce(tempX100, humX100);  // 2nd try
   }
   headerOff(BUS_J3);
   if (ok)
@@ -1101,12 +935,10 @@ bool dhtRead(int16_t &tempX100, int16_t &humX100)
 }
 #endif
 
-// The reading a task asks for. cmd 0 (a status packet) switches nothing on: every sensor field is
-// NOT_MEASURED / ENS_NOT_MEASURED. Temperature and humidity: the SHT41's header is switched on,
-// read and off again. Gas: the ENS160 has been heating since the task arrived (gasStart); it is
-// read and switched off. A sensor that did not answer sends NO_READING / ENS_ABSENT and friends.
+// do the measurement for a task and put it in r. cmd 0 (status pkt) measures nothing
 void readTask(uint8_t cmd, Reading &r)
 {
+  // start w/ "not measured" in every field
   r.tempScaled = NOT_MEASURED;
   r.humScaled = NOT_MEASURED;
   r.tvoc = 0;
@@ -1116,9 +948,10 @@ void readTask(uint8_t cmd, Reading &r)
 
   if (cmd == CMD_HUMIDITY || cmd == CMD_TEMPERATURE)
   {
-    r.tempScaled = NO_READING;
+    r.tempScaled = NO_READING;  // stays like this if the sensor doesnt answer
     r.humScaled = NO_READING;
 #if USE_DHT11
+    // node 4: read the DHT11 instead of the SHT41
     int16_t t, h;
     if (dhtRead(t, h))
     {
@@ -1128,11 +961,11 @@ void readTask(uint8_t cmd, Reading &r)
     return;
 #endif
     if (!shtFound && !shtSearched)
-      findSensor(true);
+      findSensor(true);  // 1st task, look for the sensor
     if (!shtFound)
       return;
 #if USE_ENS160
-    bool shared = gasWarming && ensBus == shtBus;  // already powered for a gas task
+    bool shared = gasWarming && ensBus == shtBus;  // header alrd on bc of a gas task
 #else
     bool shared = false;
 #endif
@@ -1144,7 +977,7 @@ void readTask(uint8_t cmd, Reading &r)
     selectBus(shtBus);
     i2cGuardStart();
     sensors_event_t humEvent, tempEvent;
-    if (sht4.getEvent(&humEvent, &tempEvent))
+    if (sht4.getEvent(&humEvent, &tempEvent))  // read temp + hum
     {
       r.tempScaled = (int16_t)(tempEvent.temperature * 100);
       r.humScaled = (int16_t)(humEvent.relative_humidity * 100);
@@ -1153,29 +986,29 @@ void readTask(uint8_t cmd, Reading &r)
       DBGLN("SHT41 did not answer");
     i2cGuardStop();
     if (!shared)
-      headerOff(shtBus);
+      headerOff(shtBus);  // done, power off
   }
   else if (cmd == CMD_GAS)
   {
-    r.eco2 = 400;  // the values the server already got when no gas sensor is fitted
+    r.eco2 = 400;  // default values if theres no gas sensor
     r.ensStatus = ENS_ABSENT;
 #if USE_ENS160
     if (!gasWarming)
-      return;
+      return;  // sensor never started
     selectBus(ensBus);
-    bootTrace.phase = PHASE_GAS_READ;  // gasStop() sets it back to idle
+    bootTrace.phase = PHASE_GAS_READ;  // gasStop() puts it back to idle
     i2cGuardStart();
     uint8_t status = 0;
     bool fresh = false;
-    for (uint8_t i = 0; i < 15 && !fresh; i++)  // a sample comes every second
+    for (uint8_t i = 0; i < 15 && !fresh; i++)  // wait up to 1.5 s for a new sample
     {
       if (!ens160ReadStatus(status))
-        break;
+        break;  // no i2c answer
       fresh = status & ENS160_STATUS_NEWDAT;
       if (!fresh)
       {
         uint32_t t0 = millis();
-        while (millis() - t0 < 100)  // 100 ms in idle, not delay(): the 1 ms millis tick wakes the CPU
+        while (millis() - t0 < 100)  // wait 100 ms in idle
           LowPower.idle();
       }
     }
@@ -1183,8 +1016,8 @@ void readTask(uint8_t cmd, Reading &r)
       r.ensStatus = ENS_NO_SAMPLE;
     else if (ens160ReadData(r.aqi, r.tvoc, r.eco2))
     {
-      r.ensStatus = (status & ENS160_STATUS_VALIDITY_gm) >> ENS160_STATUS_VALIDITY_gp;
-      bootTrace.fails[2] = 0;  // the heater ran its warm-up without a brown-out
+      r.ensStatus = (status & ENS160_STATUS_VALIDITY_gm) >> ENS160_STATUS_VALIDITY_gp;  // sensor's own status
+      bootTrace.fails[2] = 0;  // heater worked, reset its brown-out count
     }
     else
       r.ensStatus = ENS_NO_ANSWER;
@@ -1197,52 +1030,46 @@ void readTask(uint8_t cmd, Reading &r)
   }
 }
 
-// Storage voltage in mV (0 with VSTO_SENSE off). The reference is the internal 2.5 V one, not
-// VDD: the AEM10330 lets the 3.3 V rail wander from 3.15 to 3.34 V (DS v1.5.0 Table 10), and the
-// 2.5 V reference is allowed down to VDD = 3.0 V (ATmega4809 DS Table 32-22). Takes about 3 ms,
-// so call it while the radio is idle.
+// read the storage voltage in mV (0 if VSTO_SENSE is off). uses the internal 2.5 V ref
+// bc the 3.3 V rail isnt stable. takes abt 3 ms
 uint16_t readVstoMv()
 {
 #if VSTO_SENSE
-  ADC0.CTRLA |= ADC_ENABLE_bm;  // off the rest of the time, see setup()
+  ADC0.CTRLA |= ADC_ENABLE_bm;  // adc on (its off the rest of the time)
   analogReference(INTERNAL2V5);
-  // 8 MHz / 32 = 250 kHz: the core's 125 kHz is under the 200 kHz minimum for 10-bit results
-  // (DS Table 32-26). Longest sampling window, 33 ADC clocks = 132 us, so the 500 kohm divider
-  // can charge the sample-and-hold capacitor even without a cap on the pin.
-  ADC0.CTRLC = (ADC0.CTRLC & ~ADC_PRESC_gm) | ADC_PRESC_DIV32_gc;
-  ADC0.SAMPCTRL = 31;
-  delayMicroseconds(100);  // internal reference start-up is 25 us
-  analogRead(PIN_VSTO);    // the first result after enabling is thrown away
+  ADC0.CTRLC = (ADC0.CTRLC & ~ADC_PRESC_gm) | ADC_PRESC_DIV32_gc;  // adc clock = 8 MHz / 32 = 250 kHz
+  ADC0.SAMPCTRL = 31;      // longest sample time bc the divider is high resistance
+  delayMicroseconds(100);  // let the ref settle
+  analogRead(PIN_VSTO);    // throw away the 1st reading
 
   uint32_t sum = 0;
-  for (uint8_t i = 0; i < 16; i++)
+  for (uint8_t i = 0; i < 16; i++)  // avg of 16 readings
     sum += analogRead(PIN_VSTO);
-  ADC0.CTRLA &= ~ADC_ENABLE_bm;
+  ADC0.CTRLA &= ~ADC_ENABLE_bm;  // adc off
 
-  // RES = 1023 x VIN / VREF (DS 29.3.2.5), then undo the divider
-  float pinVolts = sum / 16.0 * 2.5 / 1023.0;
-  float vsto = pinVolts * (VSTO_R_TOP + VSTO_R_BOTTOM) / VSTO_R_BOTTOM * VSTO_CAL;
-  return (uint16_t)(vsto * 1000.0 + 0.5);
+  float pinVolts = sum / 16.0 * 2.5 / 1023.0;  // adc counts -> volts on the pin
+  float vsto = pinVolts * (VSTO_R_TOP + VSTO_R_BOTTOM) / VSTO_R_BOTTOM * VSTO_CAL;  // undo the divider
+  return (uint16_t)(vsto * 1000.0 + 0.5);  // V -> mV, rounded
 #else
   return 0;
 #endif
 }
 
+// build and send 1 uplink: the reply to the pending task, or a status pkt if theres none
 void do_send(osjob_t* j)
 {
   if (lmicTxBusy())
   {
-    // let LMIC send what it has queued first; EV_TXCOMPLETE calls do_send again for a pending task
+    // lmic is still sending smth, try again in 1 s
     DBGLN("LMIC busy, waiting");
     os_setTimedCallback(j, os_getTime() + sec2osticks(1), do_send);
     return;
   }
 
-  uint16_t vstoMv = readVstoMv();  // first, while the radio is off
+  uint16_t vstoMv = readVstoMv();  // measure before the radio turns on
   uint16_t energy = energyUnits(vstoMv);
 
-  // Not enough energy for the task: skip it and send a status packet; the server sees the low
-  // energy and gives the task to another node.
+  // (only w/ SKIP_UNAFFORDABLE_TASKS 1) not enough energy for the task -> skip it, a status pkt goes out instead
   if (SKIP_UNAFFORDABLE_TASKS && pendingCommand != 0 && energy < taskCost(pendingCommand))
   {
     tasksSkipped++;
@@ -1254,19 +1081,20 @@ void do_send(osjob_t* j)
     DBGLN(energy);
 #if USE_ENS160
     if (pendingCommand == CMD_GAS)
-      gasStop();
+      gasStop();  // heater off if it was on
 #endif
     pendingCommand = 0;
   }
 
   Reading r;
-  readTask(pendingCommand, r);
+  readTask(pendingCommand, r);  // do the measurement
 
-  uint8_t payload[17];
+  uint8_t payload[17];  // biggest pkt = status (15) + energy (2)
   uint8_t len = 0;
 
   if (pendingCommand == CMD_HUMIDITY)
   {
+    // hum reply
     payload[0] = CMD_HUMIDITY;
     payload[1] = highByte(r.humScaled);
     payload[2] = lowByte(r.humScaled);
@@ -1278,6 +1106,7 @@ void do_send(osjob_t* j)
   }
   else if (pendingCommand == CMD_TEMPERATURE)
   {
+    // temp reply
     payload[0] = CMD_TEMPERATURE;
     payload[1] = highByte(r.tempScaled);
     payload[2] = lowByte(r.tempScaled);
@@ -1289,6 +1118,7 @@ void do_send(osjob_t* j)
   }
   else if (pendingCommand == CMD_GAS)
   {
+    // gas reply
     payload[0] = CMD_GAS;
     payload[1] = highByte(r.tvoc);
     payload[2] = lowByte(r.tvoc);
@@ -1309,7 +1139,7 @@ void do_send(osjob_t* j)
   }
   else
   {
-    // No command pending: a status packet, voltage and energy only (sensors are for tasks)
+    // no task -> status pkt (sensor fields are "not measured", only voltage is real)
     payload[0] = PKT_STATUS;
     payload[1] = highByte(r.tvoc);
     payload[2] = lowByte(r.tvoc);
@@ -1334,7 +1164,7 @@ void do_send(osjob_t* j)
     DBGLN(" dBm");
   }
 
-  // TDMA: the energy goes last in every packet
+  // energy is always the last 2 bytes
   payload[len++] = highByte(energy);
   payload[len++] = lowByte(energy);
   DBG("  energy ");
@@ -1345,24 +1175,22 @@ void do_send(osjob_t* j)
   DBG(vstoMv);
   DBGLN(" mV)");
 
-  // Set before LMIC_setTxData2: LMIC starts the radio inside that call when the duty cycle allows,
-  // so EV_TXSTART (which stamps txStartedAt) fires before it returns. Set after, the stamp was
-  // skipped and every slot correction was applied to a stale time (seen 2026-10-28: uplinks 11-15 s
-  // off where the server asked for a full frame).
+  // has to be set BEFORE LMIC_setTxData2, bc EV_TXSTART can fire inside that call
   dataFrameInFlight = true;
-  if (LMIC_setTxData2(1, payload, len, 0) != LMIC_ERROR_SUCCESS)
+  if (LMIC_setTxData2(1, payload, len, 0) != LMIC_ERROR_SUCCESS)  // port 1, unconfirmed
   {
     dataFrameInFlight = false;
-    // keep pendingCommand and stay awake: retry shortly rather than sleeping a whole frame
+    // didnt work, keep the task and try again in 1 s
     DBGLN("LMIC_setTxData2 failed, retrying in 1 s");
     os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(1), do_send);
     return;
   }
 
   slotsUsed++;
-  pendingCommand = 0;
+  pendingCommand = 0;  // task is answered
 }
 
+// lmic calls this for every radio event
 void onEvent(ev_t ev)
 {
   switch (ev)
@@ -1372,20 +1200,17 @@ void onEvent(ev_t ev)
       break;
 
     case EV_JOIN_TXCOMPLETE:
-      bootTrace.phase = PHASE_IDLE;
+      bootTrace.phase = PHASE_IDLE;  // tx is over
       DBGLN("EV_JOIN_TXCOMPLETE (no JoinAccept yet)");
       break;
 
     case EV_JOINED:
       bootTrace.phase = PHASE_IDLE;
       DBGLN("EV_JOINED");
-      LMIC_setLinkCheckMode(0);
-      // ADR off + fixed SF7 (DR5): no ADR downlinks from ChirpStack, short uplinks.
-      // Uplink channels are limited to 868.1/868.3/868.5 by ChirpStack (no CFList).
-      LMIC_setAdrMode(0);
-      LMIC_setDrTxpow(DR_SF7, settings.txPowerCap);
-      // Free-run on the defaults until the first downlink brings the schedule: start in this
-      // node's own slot of the current frame.
+      LMIC_setLinkCheckMode(0);                       // no link check
+      LMIC_setAdrMode(0);                             // ADR off
+      LMIC_setDrTxpow(DR_SF7, settings.txPowerCap);   // fixed SF7 + our tx power limit
+      // no schedule yet so start in our default slot
       nextSlotAt = millis() + 100 + (uint32_t)slotIndex * DEFAULT_SLOT_MS;
       DBG("Unsynced, first uplink in ");
       DBG((int32_t)(nextSlotAt - millis()));
@@ -1394,35 +1219,30 @@ void onEvent(ev_t ev)
       break;
 
     case EV_TXSTART:
-      // LMIC has just picked this frame's power (16 dBm for a join) and starts the radio right
-      // after this event returns, so this is the last place to cap it
+      // radio starts right after this, last chance to limit the tx power (joins use 16 dBm)
       if (LMIC.radio.txpow > settings.txPowerCap)
         LMIC.radio.txpow = settings.txPowerCap;
 
       if (LMIC.opmode & OP_JOINING)
       {
-        // LMIC.frame already carries this JoinRequest's DevNonce and LMIC.devNonce has moved
-        // on to the next one. Store it before the radio goes on: if this frame browns the
-        // node out, the next boot must not repeat a nonce ChirpStack has already accepted.
+        // save the next join nonce before the tx, so a brown-out here doesnt reuse an old one
         settings.devNonce = LMIC.devNonce;
         saveSettings();
       }
       else if (dataFrameInFlight)
       {
-        // the moment the server's slot correction refers to
-        txStartedAt = millis();
+        txStartedAt = millis();  // the slot correction from the server is relative to this
       }
 
-      bootTrace.phase = PHASE_TX;
+      bootTrace.phase = PHASE_TX;  // radio is on, remember it in case we brown out
       break;
 
     case EV_RXSTART:
-      bootTrace.phase = PHASE_IDLE;  // the transmission is over once a receive window opens
+      bootTrace.phase = PHASE_IDLE;  // rx window opened so the tx is over
       break;
 
     case EV_JOIN_FAILED:
-      // LMIC keeps retrying on its own
-      bootTrace.phase = PHASE_IDLE;
+      bootTrace.phase = PHASE_IDLE;  // lmic retries by itself
       DBGLN("EV_JOIN_FAILED");
       break;
 
@@ -1430,12 +1250,12 @@ void onEvent(ev_t ev)
       bootTrace.phase = PHASE_IDLE;
       DBGLN("EV_TXCOMPLETE");
 
+      // got a downlink in rx1 or rx2 -> update the counters
       if (LMIC.txrxFlags & (TXRX_DNW1 | TXRX_DNW2))
       {
-        // a downlink was received; seqnoDn is now the next expected counter
-        int32_t fcnt = (int32_t)LMIC.seqnoDn - 1;
+        int32_t fcnt = (int32_t)LMIC.seqnoDn - 1;  // counter of this downlink
         downlinksReceived++;
-        if (fcnt - lastDownlinkFCnt - 1 > 0)
+        if (fcnt - lastDownlinkFCnt - 1 > 0)  // counter jumped = missed some
         {
           downlinksMissed += fcnt - lastDownlinkFCnt - 1;
           DBG("  !! MISSED ");
@@ -1450,31 +1270,26 @@ void onEvent(ev_t ev)
       }
 
     {
-      bool scheduled = false;
-      if (LMIC.dataLen > 0)
+      bool scheduled = false;  // true if this downlink had a schedule
+      if (LMIC.dataLen > 0)    // downlink has data
       {
         uint8_t port = (LMIC.txrxFlags & TXRX_PORT) ? LMIC.frame[LMIC.dataBeg - 1] : 0;
         DBG("Downlink on port: ");
         DBGLN(port);
 
-        // Only a TDMA downlink answering our own uplink carries a usable schedule. A frame LMIC
-        // sent on its own (MAC answers) is not one the server's correction refers to; port 10
-        // is the ALOHA workflow (Workflow 3 left on).
+        // only use it if its a TDMA downlink that answers OUR uplink
         if (port == DOWNLINK_PORT && LMIC.dataLen >= TDMA_DOWNLINK_LEN && dataFrameInFlight)
         {
-          const uint8_t* d = &LMIC.frame[LMIC.dataBeg];
+          const uint8_t* d = &LMIC.frame[LMIC.dataBeg];  // downlink bytes
           uint8_t cmd = d[0];
           DBG("Downlink command received: 0x");
           DBGLN(cmd, HEX);
           if (cmd == CMD_HUMIDITY || cmd == CMD_TEMPERATURE || cmd == CMD_GAS)
-            pendingCommand = cmd;  // answered in the next slot
+            pendingCommand = cmd;  // answer it in the next slot
 #if USE_ENS160
           if (cmd == CMD_GAS)
           {
-            // Checked now, before the heater runs (about 2.8 J for its GAS_WARMUP_MS), not only in
-            // the reply slot (do_send), when it already has: a gas task the node cannot afford is
-            // skipped here and the next slot sends a status packet. With SKIP_UNAFFORDABLE_TASKS 0
-            // the heater starts as always, without the VSTO read (about 3 ms; the radio is asleep).
+            // check the energy now, before the heater uses any (only w/ SKIP_UNAFFORDABLE_TASKS 1)
             uint16_t energy = SKIP_UNAFFORDABLE_TASKS ? energyUnits(readVstoMv()) : 0;
             if (SKIP_UNAFFORDABLE_TASKS && energy < taskCost(CMD_GAS))
             {
@@ -1485,24 +1300,24 @@ void onEvent(ev_t ev)
               DBG(taskCost(CMD_GAS));
               DBG(", energy ");
               DBGLN(energy);
-              pendingCommand = 0;
+              pendingCommand = 0;  // cant afford it
             }
             else
-              gasStartPending = true;  // loop() starts the heater GAS_WARMUP_MS before the slot
+              gasStartPending = true;  // loop() starts the heater 60 s before the slot
           }
 #endif
           else if (cmd == CMD_RESET_ENERGY)
             DBGLN("  battery refill ignored: this node reports its real energy");
-          applySchedule(d, LMIC.dataLen, txStartedAt);
+          applySchedule(d, LMIC.dataLen, txStartedAt);  // update slot timing
           scheduled = true;
         }
       }
 
       if (dataFrameInFlight && !scheduled)
-        nextSlotAt += frameMs;  // no schedule this time: keep the frame going on the local clock
+        nextSlotAt += frameMs;  // no schedule, just go 1 frame later
       if (dataFrameInFlight && goodUplinks < GOOD_UPLINKS && ++goodUplinks == GOOD_UPLINKS)
       {
-        bootTrace.brownOutRun = 0;  // the storage carries the node: back-off over
+        bootTrace.brownOutRun = 0;  // node is running fine, clear the brown-out count
         DBGLN("  running steadily: brown-out count cleared");
       }
       dataFrameInFlight = false;
@@ -1518,8 +1333,7 @@ void onEvent(ev_t ev)
       DBG((int32_t)(nextSlotAt - millis()));
       DBGLN(" ms");
 
-      // TDMA: even a task waits for the node's next slot, so always sleep until then
-      sleepPending = true;
+      sleepPending = true;  // sleep until the next slot
       break;
     }
 
@@ -1527,7 +1341,7 @@ void onEvent(ev_t ev)
       bootTrace.phase = PHASE_IDLE;
       DBGLN("EV_TXCANCELED");
       if (dataFrameInFlight)
-        nextSlotAt += frameMs;
+        nextSlotAt += frameMs;  // try again next frame
       dataFrameInFlight = false;
       sleepPending = true;
       break;
@@ -1539,26 +1353,22 @@ void onEvent(ev_t ev)
 
 void setup()
 {
-  // Watchdog first, 8 s, kicked from loop() and on every wake while asleep. It catches an I2C
-  // hang (MegaCoreX Wire has no timeout) and LMIC's hal_failed() endless loop.
-  _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_8KCLK_gc);
+  _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_8KCLK_gc);  // watchdog on, 8 s
 
-  resetFlags = RSTCTRL.RSTFR;
-  RSTCTRL.RSTFR = resetFlags;  // flags clear by writing 1
+  resetFlags = RSTCTRL.RSTFR;  // why did we reset
+  RSTCTRL.RSTFR = resetFlags;  // clear the flags (write 1 to clear)
 
-  ADC0.CTRLA &= ~ADC_ENABLE_bm;  // the core enables the ADC; readVstoMv() turns it on only to read
+  ADC0.CTRLA &= ~ADC_ENABLE_bm;  // adc off, readVstoMv() turns it on when needed
 
   for (uint8_t i = 0; i < sizeof(UNUSED_PINS); i++)
-    LowPower.disablePinISC(UNUSED_PINS[i]);
-  // The TWI pins of both headers start parked, as headerOff() leaves them; headerOn() turns a
-  // header's pair back on before Wire.begin(). With R9-R12 on the always-on 3V3 this changes
-  // nothing (the lines are held high), but with R9-R12 removed or moved to VCC_SENS the pins would
-  // float until the first task.
+    LowPower.disablePinISC(UNUSED_PINS[i]);  // unused pins off
+  // i2c pins of both headers off too, headerOn() turns them back on
   LowPower.disablePinISC(PIN_PA2);
   LowPower.disablePinISC(PIN_PA3);
   LowPower.disablePinISC(PIN_PC2);
   LowPower.disablePinISC(PIN_PC3);
 
+  // led off, both sensor headers off
   pinMode(PIN_LED, OUTPUT);
   digitalWriteFast(PIN_LED, LOW);
   pinMode(PIN_RAIL_B, OUTPUT);
@@ -1566,42 +1376,36 @@ void setup()
   pinMode(PIN_RAIL_A, OUTPUT);
   digitalWriteFast(PIN_RAIL_A, LOW);
 
-  // radio asleep before the brown-out rest; after the pins above, so the header enables are
-  // driven low before its 10 ms wait
-  radioSleepEarly();
+  radioSleepEarly();  // radio to sleep before the brown-out wait
 
 #if DEBUG
   Serial.begin(115200);
-  PORTA.PIN1CTRL |= PORT_PULLUPEN_bm;  // RX0 floats when the USB-serial adapter is unplugged
+  PORTA.PIN1CTRL |= PORT_PULLUPEN_bm;  // pull-up on RX so it doesnt float w/o the usb adapter
   Serial.println("SHT41 + ENS160 LoRaWAN node - TDMA slots, energy from the storage voltage");
   Serial.print("Node number ");
   Serial.println(NODE_NUMBER);
-  Serial.print("Reset flags 0x");  // 0x02 = brown-out, 0x08 = watchdog reset
+  Serial.print("Reset flags 0x");  // 0x02 = brown-out, 0x08 = watchdog
   Serial.println(resetFlags, HEX);
 #else
-  LowPower.disablePinISC(PIN_PA0);
+  LowPower.disablePinISC(PIN_PA0);  // uart pins off
   LowPower.disablePinISC(PIN_PA1);
 #endif
 
-  // RTC PIT: 1.024 kHz from the internal ULP oscillator divided by 64, one interrupt per tick,
-  // PIT_TICKS_PER_S (16) a second
-  while (RTC.STATUS > 0) {}
-  RTC.CLKSEL = RTC_CLKSEL_INT1K_gc;
-  RTC.PITINTCTRL = RTC_PI_bm;
+  // start the RTC PIT: 1.024 kHz ULP clock / 64 = 16 interrupts per sec
+  while (RTC.STATUS > 0) {}           // wait till the RTC is ready
+  RTC.CLKSEL = RTC_CLKSEL_INT1K_gc;   // 1.024 kHz clock
+  RTC.PITINTCTRL = RTC_PI_bm;         // PIT interrupt on
   while (RTC.PITSTATUS > 0) {}
-  RTC.PITCTRLA = RTC_PERIOD_CYC64_gc | RTC_PITEN_bm;
+  RTC.PITCTRLA = RTC_PERIOD_CYC64_gc | RTC_PITEN_bm;  // / 64 and enable
 
-  // First, before anything draws current: only radioSleepEarly() comes before it (a 10 ms wait and
-  // four SPI bytes), and that is what makes the rest cheap, the radio sleeps through it.
-  brownOutBackOff();
+  brownOutBackOff();  // if we just browned out, sleep here before using any power
 
-  usPerTick = measurePitTick();
+  usPerTick = measurePitTick();  // calibrate the sleep timer (abt 4 s)
   DBG("Sleep clock: one PIT tick = ");
   DBG(usPerTick);
   DBGLN(" us");
 
-  // printed at boot too, so calibration does not have to wait for the join
-  uint16_t bootMv = readVstoMv();
+  uint16_t bootMv = readVstoMv();  // print the voltage at boot (for calibrating VSTO_CAL)
   DBG("Storage voltage ");
   DBG(bootMv);
   DBG(" mV, energy ");
@@ -1609,16 +1413,14 @@ void setup()
 
   DBGLN("Sensors off: each one is looked for and powered only when a task needs it");
 
-  os_init();
+  os_init();     // start lmic
   LMIC_reset();
-  // The internal oscillator is only good to +-2 % over 0-70 C (ATmega4809 datasheet,
-  // OSC20M total error), so the receive windows are widened to match.
-  LMIC_setClockError(MAX_CLOCK_ERROR * 2 / 100);
-  PORTA.PIN5CTRL |= PORT_PULLUPEN_bm;  // MISO floats while the radio is deselected
+  LMIC_setClockError(MAX_CLOCK_ERROR * 2 / 100);  // internal clock is +-2 %, make the rx windows wider
+  PORTA.PIN5CTRL |= PORT_PULLUPEN_bm;  // pull-up on MISO so it doesnt float
 
-  loadSettings();  // after LMIC_reset(): a blank EEPROM takes LMIC's random DevNonce
-  learnFromBrownOut();
-  LMIC.devNonce = settings.devNonce;
+  loadSettings();        // has to be after LMIC_reset()
+  learnFromBrownOut();   // lower the tx power if the last reset was a brown-out during tx
+  LMIC.devNonce = settings.devNonce;  // continue the join nonce from EEPROM
   DBG("TX power cap ");
   DBG(settings.txPowerCap);
   DBG(" dBm, brown-outs during TX ");
@@ -1626,47 +1428,42 @@ void setup()
   DBG(", next DevNonce ");
   DBGLN(settings.devNonce);
 
-  LMIC_startJoining();
+  LMIC_startJoining();  // start the OTAA join
 }
 
-// Naps while LMIC waits (loop()). Not joined, LMIC waits seconds to minutes between join attempts,
-// and joined, it waits out the duty cycle before an uplink it queued itself (MAC answers, about
-// 7 s). loop() used to idle (about 1 mA) through all of it. Now it power-downs in chunks of up to
-// NAP_MS while LMIC's next timed job is at least NAP_GUARD_MS away, so every chunk ends a second or
-// more before that job, and idles when a chunk would be shorter than NAP_MIN_MS.
-const uint32_t NAP_MS = 2000;
-const uint32_t NAP_GUARD_MS = 3000;
-const int32_t NAP_MIN_MS = 200;
+// short power-down naps in loop() while lmic is just waiting (between joins, duty cycle)
+const uint32_t NAP_MS = 2000;        // longest nap
+const uint32_t NAP_GUARD_MS = 3000;  // only nap if lmic's next job is at least this far away
+const int32_t NAP_MIN_MS = 200;      // shorter than this isnt worth it, just idle
 static_assert(NAP_GUARD_MS > NAP_MS, "a nap must end before LMIC's next timed job is due");
 
 void loop()
 {
   watchdogKick();
-  os_runloop_once();
+  os_runloop_once();  // let lmic do its thing
 
+  // some part was turned off for 1 h -> reset and try it again
   if (bootTrace.culprits && sleepPending && !lmicTxBusy() && millis() > SENSOR_RETRY_MS)
   {
-    bootTrace.culprits = 0;  // try every sensor again
+    bootTrace.culprits = 0;
     bootTrace.brownOutRun = 0;
-    // a part left off for an hour: restart to try it again (a software reset does
-    // not count as a brown-out, so the first try comes without a wait)
     DBGLN("Trying the sensors again: software reset");
 #if DEBUG
     Serial.flush();
 #endif
-    _PROTECTED_WRITE(RSTCTRL.SWRR, RSTCTRL_SWRE_bm);
+    _PROTECTED_WRITE(RSTCTRL.SWRR, RSTCTRL_SWRE_bm);  // software reset
   }
 
   if (sleepPending && !lmicTxBusy())
   {
+    // uplink is done and lmic is free -> sleep until our next slot
     sleepPending = false;
-    // a slot already passed (a late uplink, a long LMIC wait) is skipped, not sent late
     while ((int32_t)(nextSlotAt - millis()) < 50)
-      nextSlotAt += frameMs;
+      nextSlotAt += frameMs;  // slot alrd passed, skip to the next one
 #if USE_ENS160
     if (gasStartPending)
     {
-      // heat for GAS_WARMUP_MS before the reply slot, or from now when the frame is shorter
+      // gas task: wake up 60 s before the slot to start the heater (or start now if the frame is short)
       gasStartPending = false;
       uint32_t warmAt = nextSlotAt - GAS_WARMUP_MS;
       if ((int32_t)(warmAt - millis()) > 0)
@@ -1684,27 +1481,19 @@ void loop()
     DBG((int32_t)(nextSlotAt - millis()));
     DBGLN(" ms until the slot");
     sleepUntil(nextSlotAt);
-    os_setCallback(&sendjob, do_send);
+    os_setCallback(&sendjob, do_send);  // slot time, send
   }
   else
   {
-    // Idle keeps the 1 ms millis tick running, so LMIC's receive-window timing still holds.
-    // Power-down (a nap, see NAP_MS) is safe instead when:
-    //  - no TX/RX cycle is running (OP_TXRXPEND clear): receive windows only exist inside one, and
-    //    the radio's DIO lines, polled only while awake, have nothing to report;
-    //  - LMIC's next timed job (a join attempt, a duty-cycle wait, do_send's 1 s retry) is at least
-    //    NAP_GUARD_MS away. sleepUntil() credits millis(), and so LMIC's micros() clock, for the
-    //    nap, so that job still runs when it is due. LMIC's runnable jobs cannot be seen from here,
-    //    but outside a TX/RX cycle they only start or restart a join, which a nap delays by at most
-    //    NAP_MS; do_send itself is queued only after the slot sleep and runs before this point.
-    // Joined, a nap never runs past the node's slot.
+    // lmic is busy or waiting. nap (power-down) if its safe, otherwise idle.
+    // safe = no tx/rx going on and lmic's next job is far enough away
     uint32_t napUntil = millis() + NAP_MS;
     if (LMIC.devaddr != 0 && (int32_t)(napUntil - nextSlotAt) > 0)
-      napUntil = nextSlotAt;
+      napUntil = nextSlotAt;  // joined: dont nap past our slot
     if (!(LMIC.opmode & OP_TXRXPEND) && !os_queryTimeCriticalJobs(ms2osticks(NAP_GUARD_MS)) &&
         (int32_t)(napUntil - millis()) >= NAP_MIN_MS)
       sleepUntil(napUntil);
     else
-      LowPower.idle();
+      LowPower.idle();  // idle keeps millis running so the rx windows stay on time
   }
 }
